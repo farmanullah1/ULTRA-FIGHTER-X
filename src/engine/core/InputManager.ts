@@ -15,6 +15,7 @@ export class InputManager {
   private p1Buffer: InputBuffer = { frames: [], maxLength: INPUT_BUFFER_SIZE }
   private p2Buffer: InputBuffer = { frames: [], maxLength: INPUT_BUFFER_SIZE }
   private controls: { player1: ControlMap; player2: ControlMap }
+  private virtualState: InputState = { ...EMPTY_INPUT }
 
   // Gamepad support
   private gamepads: (Gamepad | null)[] = []
@@ -22,6 +23,15 @@ export class InputManager {
   constructor(controls: { player1: ControlMap; player2: ControlMap }) {
     this.controls = controls
     this.bindListeners()
+    if (typeof window !== 'undefined') {
+      (window as any).triggerVirtualInput = (action: keyof InputState, pressed: boolean) => {
+        this.setVirtualInput(action, pressed)
+      }
+    }
+  }
+
+  setVirtualInput(action: keyof InputState, pressed: boolean): void {
+    this.virtualState[action] = pressed
   }
 
   private bindListeners(): void {
@@ -36,6 +46,9 @@ export class InputManager {
     window.removeEventListener('keyup', this.onKeyUp)
     window.removeEventListener('gamepadconnected', this.onGamepadConnected)
     window.removeEventListener('gamepaddisconnected', this.onGamepadDisconnected)
+    if (typeof window !== 'undefined') {
+      (window as any).triggerVirtualInput = undefined
+    }
   }
 
   private onKeyDown = (e: KeyboardEvent): void => {
@@ -105,7 +118,23 @@ export class InputManager {
       state.block = state.block || (btns[7]?.pressed ?? false)
     }
 
-    return state
+    // Virtual Touch Overlay for Player 1
+    if (gamepadIndex === 0) {
+      state.left = state.left || this.virtualState.left
+      state.right = state.right || this.virtualState.right
+      state.up = state.up || this.virtualState.up
+      state.down = state.down || this.virtualState.down
+      state.punch = state.punch || this.virtualState.punch
+      state.kick = state.kick || this.virtualState.kick
+      state.heavyPunch = state.heavyPunch || this.virtualState.heavyPunch
+      state.heavyKick = state.heavyKick || this.virtualState.heavyKick
+      state.special = state.special || this.virtualState.special
+      state.super = state.super || this.virtualState.super
+      state.block = state.block || this.virtualState.block
+      state.dash = state.dash || this.virtualState.dash
+    }
+
+    return state;
   }
 
   private pushToBuffer(buffer: InputBuffer, state: InputState, frame: number): void {

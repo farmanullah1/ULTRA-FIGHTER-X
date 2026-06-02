@@ -1,7 +1,80 @@
 @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Rajdhani:wght@400;500;600;700&family=Share+Tech+Mono&display=swap');
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
+
+@theme {
+  --color-neon-cyan: #00FFFF;
+  --color-neon-magenta: #FF00FF;
+  --color-neon-yellow: #FFE600;
+  --color-neon-green: #39FF14;
+  --color-neon-orange: #FF6600;
+  --color-neon-red: #FF003C;
+
+  --color-dark-900: #030308;
+  --color-dark-800: #080812;
+  --color-dark-700: #0D0D1A;
+  --color-dark-600: #12121F;
+  --color-dark-500: #1A1A2E;
+
+  --font-display: "Orbitron", monospace;
+  --font-body: "Rajdhani", sans-serif;
+  --font-mono: "Share Tech Mono", monospace;
+
+  --animate-pulse-neon: pulseNeon 2s ease-in-out infinite;
+  --animate-glitch: glitch 0.3s linear infinite;
+  --animate-scanline: scanline 8s linear infinite;
+  --animate-flicker: flicker 0.15s infinite;
+  --animate-slide-in-left: slideInLeft 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  --animate-slide-in-right: slideInRight 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  --animate-zoom-burst: zoomBurst 0.2s ease-out;
+  --animate-health-drain: healthDrain 0.3s ease-out;
+  --animate-shake: shake 0.3s cubic-bezier(.36,.07,.19,.97);
+
+  @keyframes pulseNeon {
+    0%, 100% { text-shadow: 0 0 4px #00FFFF, 0 0 12px #00FFFF, 0 0 24px #00FFFF; }
+    50% { text-shadow: 0 0 8px #00FFFF, 0 0 24px #00FFFF, 0 0 48px #00FFFF; }
+  }
+  @keyframes glitch {
+    0% { transform: translate(0); }
+    20% { transform: translate(-2px, 2px); }
+    40% { transform: translate(2px, -2px); }
+    60% { transform: translate(-1px, 1px); }
+    80% { transform: translate(1px, -1px); }
+    100% { transform: translate(0); }
+  }
+  @keyframes scanline {
+    0% { transform: translateY(-100%); }
+    100% { transform: translateY(100vh); }
+  }
+  @keyframes slideInLeft {
+    from { transform: translateX(-100%); opacity: 0; }
+    to { transform: translateX(0); opacity: 1; }
+  }
+  @keyframes slideInRight {
+    from { transform: translateX(100%); opacity: 0; }
+    to { transform: translateX(0); opacity: 1; }
+  }
+  @keyframes zoomBurst {
+    0% { transform: scale(1.4); opacity: 0; }
+    100% { transform: scale(1); opacity: 1; }
+  }
+  @keyframes healthDrain {
+    0% { filter: brightness(2) saturate(3); }
+    100% { filter: brightness(1) saturate(1); }
+  }
+  @keyframes shake {
+    10%, 90% { transform: translate3d(-1px, 0, 0); }
+    20%, 80% { transform: translate3d(2px, 0, 0); }
+    30%, 50%, 70% { transform: translate3d(-4px, 0, 0); }
+    40%, 60% { transform: translate3d(4px, 0, 0); }
+  }
+  @keyframes flicker {
+    0% { opacity: 0.97; }
+    5% { opacity: 0.92; }
+    10% { opacity: 0.97; }
+    15% { opacity: 0.94; }
+    100% { opacity: 0.97; }
+  }
+}
 
 :root {
   --neon-cyan: #00FFFF;

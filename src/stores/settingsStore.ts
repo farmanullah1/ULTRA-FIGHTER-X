@@ -9,12 +9,16 @@ interface SettingsActions {
   setRoundTime: (t: number) => void
   setRounds: (r: number) => void
   setDifficulty: (d: GameSettings['difficulty']) => void
+  setGraphicsQuality: (q: 'low' | 'medium' | 'ultra') => void
   toggleHitboxes: () => void
   toggleFPS: () => void
   resetToDefaults: () => void
 }
 
 type SettingsState = GameSettings & SettingsActions
+
+const isMobileDevice = typeof window !== 'undefined' && 
+  ('ontouchstart' in window || navigator.maxTouchPoints > 0 || window.innerWidth < 768)
 
 const defaults: GameSettings = {
   sfxVolume: 0.8,
@@ -25,6 +29,7 @@ const defaults: GameSettings = {
   showHitboxes: false,
   showFPS: false,
   vibration: true,
+  graphicsQuality: isMobileDevice ? 'medium' : 'ultra',
   controls: {
     player1: DEFAULT_CONTROLS_P1,
     player2: DEFAULT_CONTROLS_P2,
@@ -42,6 +47,7 @@ export const useSettingsStore = create<SettingsState>()(
       setRoundTime: (t) => set((s) => { s.roundTime = t }),
       setRounds: (r) => set((s) => { s.rounds = r }),
       setDifficulty: (d) => set((s) => { s.difficulty = d }),
+      setGraphicsQuality: (q) => set((s) => { s.graphicsQuality = q }),
       toggleHitboxes: () => set((s) => { s.showHitboxes = !s.showHitboxes }),
       toggleFPS: () => set((s) => { s.showFPS = !s.showFPS }),
       resetToDefaults: () => set(() => ({ ...defaults })),

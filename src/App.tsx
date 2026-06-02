@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { useEffect } from 'react'
 import { useGameStore } from '@stores/gameStore'
 import { GameCanvas } from '@components/game/GameCanvas'
 import { HUD } from '@components/layout/HUD'
@@ -7,10 +7,39 @@ import { StageSelect } from '@components/menus/StageSelect'
 import { SettingsMenu } from '@components/menus/SettingsMenu'
 import { PauseMenu } from '@components/game/PauseMenu'
 import { AnimatePresence, motion } from 'framer-motion'
+import { audioManager } from '@engine/audio/AudioManager'
 import './styles/globals.css'
 
 function App() {
-  const { screen, setScreen, isPaused } = useGameStore()
+  const { screen, setScreen, isPaused, setGameMode } = useGameStore()
+
+  // Start menu music on first user click or key press to obey browser policies
+  useEffect(() => {
+    const handleInteraction = () => {
+      audioManager.resume()
+      if (screen !== 'battle') {
+        audioManager.startMenuMusic()
+      }
+      window.removeEventListener('click', handleInteraction)
+      window.removeEventListener('keydown', handleInteraction)
+    }
+    window.addEventListener('click', handleInteraction)
+    window.addEventListener('keydown', handleInteraction)
+    return () => {
+      window.removeEventListener('click', handleInteraction)
+      window.removeEventListener('keydown', handleInteraction)
+    }
+  }, [screen])
+
+  // Keep menu and battle tracks distinct on screen transitions
+  useEffect(() => {
+    if (screen === 'battle') {
+      audioManager.stopMenuMusic()
+    } else if (screen !== 'loading') {
+      audioManager.resume()
+      audioManager.startMenuMusic()
+    }
+  }, [screen])
 
   return (
     <div className="w-full h-full bg-dark-900 text-white overflow-hidden font-body select-none">
@@ -69,21 +98,34 @@ function App() {
               initial={{ opacity: 0, x: -100 }}
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: 100 }}
-              className="w-full h-full flex items-center justify-start p-24 bg-gradient-to-r from-dark-900 via-dark-900/60 to-transparent pointer-events-auto"
+              className="w-full h-full flex items-center justify-start p-6 md:p-12 lg:p-24 bg-gradient-to-r from-dark-900 via-dark-900/60 to-transparent pointer-events-auto"
             >
-              <div className="flex flex-col items-start gap-12 max-w-2xl">
+              <div className="flex flex-col items-start gap-8 md:gap-12 max-w-2xl w-full">
                 <div className="space-y-2">
-                  <h2 className="text-neon-cyan text-2xl font-display italic tracking-widest animate-pulse">SYSTEM ONLINE</h2>
-                  <h1 className="text-9xl font-display font-black text-white italic leading-none tracking-tighter drop-shadow-glow">
+                  <h2 className="text-neon-cyan text-lg md:text-2xl font-display italic tracking-widest animate-pulse">SYSTEM ONLINE</h2>
+                  <h1 className="text-6xl md:text-8xl lg:text-9xl font-display font-black text-white italic leading-none tracking-tighter drop-shadow-[0_0_35px_rgba(0,255,255,0.45)]">
                     ULTRA<br/>FIGHTER X
                   </h1>
                 </div>
 
-                <div className="flex flex-col gap-4 w-full">
-                  <MenuButton label="ARCADE MODE" onClick={() => setScreen('character-select')} primary />
-                  <MenuButton label="VERSUS" onClick={() => setScreen('character-select')} />
-                  <MenuButton label="TRAINING" onClick={() => setScreen('character-select')} />
-                  <MenuButton label="SETTINGS" onClick={() => setScreen('settings')} />
+                <div className="flex flex-col gap-4 w-full max-w-md">
+                  <MenuButton 
+                    label="ARCADE MODE" 
+                    onClick={() => { setGameMode('arcade'); setScreen('character-select'); }} 
+                    primary 
+                  />
+                  <MenuButton 
+                    label="VERSUS MODE" 
+                    onClick={() => { setGameMode('versus'); setScreen('character-select'); }} 
+                  />
+                  <MenuButton 
+                    label="TRAINING LAB" 
+                    onClick={() => { setGameMode('training'); setScreen('character-select'); }} 
+                  />
+                  <MenuButton 
+                    label="SETTINGS" 
+                    onClick={() => setScreen('settings')} 
+                  />
                 </div>
               </div>
             </motion.div>
@@ -108,11 +150,15 @@ const MenuButton: React.FC<MenuButtonProps> = ({ label, onClick, primary }) => (
   <motion.button
     whileHover={{ x: 20, backgroundColor: primary ? 'var(--neon-cyan)' : 'rgba(0, 255, 255, 0.1)' }}
     whileTap={{ scale: 0.95 }}
-    onClick={onClick}
+    onMouseEnter={() => audioManager.playSFX('menu_hover')}
+    onClick={() => {
+      audioManager.playSFX('menu_select')
+      onClick()
+    }}
     className={cn(
-      "w-full text-left px-8 py-4 font-display text-2xl italic tracking-tighter transition-colors clip-corner-tr border-l-4",
+      "w-full text-left px-6 md:px-8 py-3 md:py-4 font-display text-xl md:text-2xl italic tracking-tighter transition-colors clip-corner-tr border-l-4 cursor-pointer",
       primary 
-        ? "bg-neon-cyan/80 text-dark-900 border-white" 
+        ? "bg-neon-cyan/80 text-dark-900 border-white font-black" 
         : "bg-white/5 text-neon-cyan border-neon-cyan hover:text-white"
     )}
   >

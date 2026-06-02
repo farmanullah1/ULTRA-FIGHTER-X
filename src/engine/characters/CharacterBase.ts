@@ -3,7 +3,7 @@ import type { CharacterDef, AnimationState, Move } from '@game-types/character.t
 import type { InputState } from '@game-types/input.types'
 import type { InputBuffer } from '@game-types/input.types'
 import { STARTING_HEALTH, MAX_METER } from '@constants/gameConstants'
-import type { AbstractMesh, TransformNode, AnimationGroup } from '@babylonjs/core'
+import { TransformNode, AbstractMesh, AnimationGroup } from '@babylonjs/core'
 
 export class CharacterBase {
   id: string
@@ -47,6 +47,9 @@ export class CharacterBase {
   onSpawnProjectile: ((config: any, pos: any, facingRight: boolean) => void) | null = null
   onSuperFlash: (() => void) | null = null
 
+  // Part mesh cache for procedural animations
+  private partCache: Map<string, AbstractMesh | null> = new Map()
+
   constructor(def: CharacterDef, startX: number, facingRight: boolean) {
     this.id = def.id
     this.def = def
@@ -65,6 +68,18 @@ export class CharacterBase {
     }
   }
 
+  private getPart(name: string): AbstractMesh | null {
+    if (!this.rootNode) return null
+    if (this.partCache.has(name)) {
+      return this.partCache.get(name) || null
+    }
+
+    const meshes = this.rootNode.getChildMeshes(false)
+    const part = meshes.find(m => m.name === name) || null
+    this.partCache.set(name, part)
+    return part
+  }
+
   update(input: InputState, inputBuffer: InputBuffer, frame: number, physics: PhysicsEngine, inputManager: any): void {
     // Update hitstop
     if (this.hitstopTimer > 0) {
@@ -75,9 +90,27 @@ export class CharacterBase {
     this.body.isFrozen = false
 
     // Update timers
-    if (this.hitstunTimer > 0) this.hitstunTimer--
-    if (this.blockstunTimer > 0) this.blockstunTimer--
-    if (this.getupTimer > 0) this.getupTimer--
+    if (this.hitstunTimer > 0) {
+      this.hitstunTimer--
+      if (this.hitstunTimer === 0) {
+        this.isInHitstun = false
+        this.currentAnimation = 'idle'
+      }
+    }
+    if (this.blockstunTimer > 0) {
+      this.blockstunTimer--
+      if (this.blockstunTimer === 0) {
+        this.isInBlockstun = false
+        this.currentAnimation = 'idle'
+      }
+    }
+    if (this.getupTimer > 0) {
+      this.getupTimer--
+      if (this.getupTimer === 0) {
+        this.isKnockedDown = false
+        this.currentAnimation = 'idle'
+      }
+    }
 
     const isStunned = this.hitstunTimer > 0 || this.blockstunTimer > 0
     
@@ -195,6 +228,7 @@ export class CharacterBase {
   receiveHit(damage: number, hitstun: number, knockback: { x: number; y: number; z: number }): void {
     this.health = Math.max(0, this.health - damage)
     this.hitstunTimer = hitstun
+    this.isInHitstun = true
     this.currentMove = null
     this.isBlocking = false
     this.body.velocity.x = knockback.x * (this.facingRight ? -1 : 1)
@@ -202,11 +236,18 @@ export class CharacterBase {
     this.body.velocity.z = knockback.z
     this.currentAnimation = 'hit-stun'
     this.meter = Math.min(MAX_METER, this.meter + 40)
+
+    if (this.isDead) {
+      this.currentAnimation = 'defeat'
+      this.isKnockedDown = true
+      this.getupTimer = 0
+    }
   }
 
   receiveBlock(damage: number, blockstun: number): void {
     this.health = Math.max(0, this.health - damage)
     this.blockstunTimer = blockstun
+    this.isInBlockstun = true
     this.currentAnimation = 'block'
     this.meter = Math.min(MAX_METER, this.meter + 10)
   }
@@ -223,7 +264,7 @@ export class CharacterBase {
       if (this.moveFrame === this.currentMove.startup && this.currentMove.projectile) {
         const spawnPos = {
           x: this.body.position.x + (this.facingRight ? 1 : -1),
-          y: this.body.position.y + 1.5,
+          y: this.body.position.y + 1.4,
           z: this.body.position.z
         }
         this.onSpawnProjectile?.(this.currentMove.projectile, spawnPos, this.facingRight)
@@ -237,15 +278,252 @@ export class CharacterBase {
       }
     }
     
-    // Play Babylon Animation Group
-    const anim = this.animations.get(this.currentAnimation)
-    if (anim && !anim.isPlaying) {
-      // Stop other animations
-      this.animations.forEach(a => { if (a !== anim) a.stop() })
-      anim.play(true)
-    }
-    
+    // Process skeletal procedural keyframing
+    this.updateProceduralAnimation()
     this.animationTimer++
+  }
+
+  private updateProceduralAnimation(): void {
+    if (!this.rootNode) return
+
+    // Get sub-meshes
+    const body = this.getPart('body')
+    const head = this.getPart('head')
+    const legL = this.getPart('legL')
+    const legR = this.getPart('legR')
+    const armL = this.getPart('armL')
+    const armR = this.getPart('armR')
+
+    if (!body || !head || !legL || !legR || !armL || !armR) return
+
+    const isHeavy = this.id === 'iron-claw'
+    const defBodyY = isHeavy ? 1.35 : 1.4
+    const defHeadY = isHeavy ? 2.15 : 2.2
+    const defLegX = isHeavy ? 0.25 : 0.2
+    const defArmX = isHeavy ? 0.66 : 0.54
+
+    // 1. Reset standard poses
+    body.position.set(0, defBodyY, 0)
+    head.position.set(0, defHeadY, 0)
+    legL.position.set(-defLegX, 0.4, 0)
+    legR.position.set(defLegX, 0.4, 0)
+    armL.position.set(-defArmX, 1.5, 0)
+    armR.position.set(defArmX, 1.5, 0)
+
+    body.rotation.set(0, 0, 0)
+    head.rotation.set(0, 0, 0)
+    legL.rotation.set(0, 0, 0)
+    legR.rotation.set(0, 0, 0)
+    armL.rotation.set(0, 0, 0)
+    armR.rotation.set(0, 0, 0)
+
+    // Reset root node tilts
+    this.rootNode.rotation.x = 0
+    this.rootNode.rotation.z = 0
+
+    // Character specific idle accessories rotations
+    this.animateAccessories()
+
+    // 2. Map animations
+    const animState = this.currentAnimation
+
+    if (animState === 'idle') {
+      const bob = Math.sin(this.animationTimer * 0.05) * 0.03
+      body.position.y = defBodyY + bob
+      head.position.y = defHeadY + bob
+      
+      // Arms relaxed
+      armL.rotation.z = -0.12 + Math.sin(this.animationTimer * 0.05) * 0.02
+      armR.rotation.z = 0.12 - Math.sin(this.animationTimer * 0.05) * 0.02
+    } 
+    else if (animState === 'walk-forward') {
+      const cycle = this.animationTimer * 0.15
+      legL.rotation.x = Math.sin(cycle) * 0.5
+      legR.rotation.x = -Math.sin(cycle) * 0.5
+      
+      armL.rotation.x = -Math.sin(cycle) * 0.4
+      armR.rotation.x = Math.sin(cycle) * 0.4
+      
+      body.position.y = defBodyY + Math.abs(Math.sin(cycle * 2)) * 0.05
+    } 
+    else if (animState === 'walk-backward') {
+      const cycle = this.animationTimer * 0.12
+      legL.rotation.x = -Math.sin(cycle) * 0.4
+      legR.rotation.x = Math.sin(cycle) * 0.4
+      
+      armL.rotation.x = Math.sin(cycle) * 0.3
+      armR.rotation.x = -Math.sin(cycle) * 0.3
+      
+      body.position.y = defBodyY + Math.abs(Math.sin(cycle * 2)) * 0.04
+    } 
+    else if (animState === 'jump') {
+      armL.rotation.z = -1.1
+      armR.rotation.z = 1.1
+      legL.rotation.x = 0.3
+      legR.rotation.x = 0.3
+      legL.position.y = 0.6
+      legR.position.y = 0.6
+    } 
+    else if (animState === 'crouch') {
+      body.position.y = defBodyY - 0.3
+      head.position.y = defHeadY - 0.3
+      legL.position.y = 0.25
+      legR.position.y = 0.25
+      legL.rotation.x = -0.4
+      legR.rotation.x = -0.4
+      armL.rotation.z = -0.08
+      armR.rotation.z = 0.08
+    } 
+    else if (animState === 'block' || animState === 'crouch-block') {
+      if (animState === 'crouch-block') {
+        body.position.y = defBodyY - 0.3
+        head.position.y = defHeadY - 0.3
+        legL.position.y = 0.25
+        legR.position.y = 0.25
+        legL.rotation.x = -0.4
+        legR.rotation.x = -0.4
+      }
+      // Shield arm pose
+      armL.rotation.set(0.5, 0.7, 0.4)
+      armR.rotation.set(0.5, -0.7, -0.4)
+    } 
+    else if (animState === 'punch-light') {
+      const duration = this.currentMove ? (this.currentMove.startup + this.currentMove.active + this.currentMove.recovery) : 10
+      const progress = this.moveFrame / duration
+      const ext = Math.sin(progress * Math.PI)
+
+      const leadArm = this.facingRight ? armR : armL
+      const backArm = this.facingRight ? armL : armR
+
+      leadArm.rotation.x = -Math.PI / 2 * ext
+      leadArm.position.z = 0.5 * ext
+      backArm.rotation.z = this.facingRight ? -0.2 : 0.2
+    } 
+    else if (animState === 'punch-heavy') {
+      const duration = this.currentMove ? (this.currentMove.startup + this.currentMove.active + this.currentMove.recovery) : 16
+      const progress = this.moveFrame / duration
+      const ext = Math.sin(progress * Math.PI)
+
+      body.rotation.y = (this.facingRight ? -0.3 : 0.3) * (1 - ext) + (this.facingRight ? 0.35 : -0.35) * ext
+      body.position.z = -0.15 * (1 - ext) + 0.3 * ext
+
+      const leadArm = this.facingRight ? armR : armL
+      leadArm.rotation.x = -Math.PI / 1.7 * ext
+      leadArm.position.z = 0.65 * ext
+    } 
+    else if (animState === 'kick-light') {
+      const duration = this.currentMove ? (this.currentMove.startup + this.currentMove.active + this.currentMove.recovery) : 12
+      const progress = this.moveFrame / duration
+      const ext = Math.sin(progress * Math.PI)
+
+      const leadLeg = this.facingRight ? legR : legL
+      leadLeg.rotation.x = -Math.PI / 3 * ext
+      leadLeg.position.z = 0.25 * ext
+    } 
+    else if (animState === 'kick-heavy') {
+      const duration = this.currentMove ? (this.currentMove.startup + this.currentMove.active + this.currentMove.recovery) : 20
+      const progress = this.moveFrame / duration
+      const spin = progress * Math.PI * 2
+      const ext = Math.sin(progress * Math.PI)
+
+      // Torso spin
+      body.rotation.y = this.facingRight ? spin : -spin
+
+      const leadLeg = this.facingRight ? legR : legL
+      leadLeg.rotation.x = -Math.PI / 2.2 * ext
+      leadLeg.position.y = 0.4 + 0.25 * ext
+    } 
+    else if (animState.startsWith('special-')) {
+      const progress = this.moveFrame / 24
+      const ext = Math.sin(progress * Math.PI)
+
+      if (this.id === 'kai-storm') {
+        const arm = this.facingRight ? armR : armL
+        arm.rotation.x = -Math.PI / 2
+        arm.position.z = 0.5 * ext
+      } 
+      else if (this.id === 'viper-x') {
+        // Slide pose
+        body.position.y = defBodyY - 0.45
+        head.position.y = defHeadY - 0.45
+        legL.rotation.x = -0.75
+        legR.rotation.x = -0.75
+      } 
+      else if (this.id === 'iron-claw') {
+        // Open wide grab
+        armL.rotation.set(-0.25 * ext, 0.7 * ext, 0.45 * ext)
+        armR.rotation.set(-0.25 * ext, -0.7 * ext, -0.45 * ext)
+      } 
+      else if (this.id === 'phoenix-rise') {
+        body.rotation.x = 0.5 * ext
+        armL.rotation.x = 0.75 * ext
+        armR.rotation.x = 0.75 * ext
+      }
+    } 
+    else if (animState === 'super') {
+      const progress = this.moveFrame / 60
+      const ext = Math.sin(progress * Math.PI)
+
+      body.position.y = defBodyY + 1.0 * ext
+      head.position.y = defHeadY + 1.0 * ext
+      armL.rotation.z = -1.25 * ext
+      armR.rotation.z = 1.25 * ext
+      legL.rotation.x = 0.35 * ext
+      legR.rotation.x = 0.35 * ext
+    } 
+    else if (animState === 'hit-stun') {
+      body.rotation.x = -0.28
+      head.rotation.x = -0.38
+      armL.rotation.z = -0.55
+      armR.rotation.z = 0.55
+    } 
+    else if (animState === 'defeat') {
+      // Slump on knees
+      body.position.y = defBodyY - 0.38
+      head.rotation.x = 0.38
+      armL.rotation.z = -0.1
+      armR.rotation.z = 0.1
+      legL.rotation.x = -0.55
+      legR.rotation.x = -0.55
+    }
+  }
+
+  private animateAccessories(): void {
+    const time = this.animationTimer
+
+    if (this.id === 'nova-star') {
+      const orbL = this.getPart('orbL')
+      const orbR = this.getPart('orbR')
+      if (orbL && orbR) {
+        const angle = time * 0.08
+        orbL.position.x = -0.6 + Math.sin(angle) * 0.08
+        orbL.position.z = Math.cos(angle) * 0.12
+        orbR.position.x = 0.6 - Math.sin(angle) * 0.08
+        orbR.position.z = -Math.cos(angle) * 0.12
+      }
+
+      const halo = this.getPart('halo')
+      if (halo) {
+        halo.position.y = 0.35 + Math.sin(time * 0.05) * 0.04
+      }
+    } 
+    else if (this.id === 'phoenix-rise') {
+      const wingL = this.getPart('wingL')
+      const wingR = this.getPart('wingR')
+      if (wingL && wingR) {
+        const flap = Math.sin(time * 0.06) * 0.12
+        wingL.rotation.y = 0.3 + flap
+        wingR.rotation.y = -0.3 - flap
+      }
+    } 
+    else if (this.id === 'shadow-byte') {
+      const shard1 = this.getPart('shard1')
+      const shard2 = this.getPart('shard2')
+      if (shard1 && shard2) {
+        shard1.position.y = 0.2 + Math.sin(time * 0.09) * 0.05
+        shard2.position.y = -0.3 + Math.cos(time * 0.07) * 0.05
+      }
+    }
   }
 
   get isDead(): boolean { return this.health <= 0 }

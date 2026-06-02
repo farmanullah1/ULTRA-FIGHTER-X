@@ -18,11 +18,29 @@ export const GameCanvas: React.FC = () => {
     const engine = new GameEngine3D(canvasRef.current, inputManager)
     engineRef.current = engine
     
-    // Initial Setup
-    const p1Def = CHARACTERS.find(c => c.id === player1CharId) || CHARACTERS[0]
-    const p2Def = CHARACTERS.find(c => c.id === player2CharId) || CHARACTERS[1]
-    
-    engine.setupBattle(p1Def, p2Def, currentStageId)
+    // Attract mode if characters are not chosen yet
+    const isAttract = !player1CharId || !player2CharId
+    let p1Def = CHARACTERS.find(c => c.id === player1CharId)
+    let p2Def = CHARACTERS.find(c => c.id === player2CharId)
+    let stage = currentStageId
+
+    if (isAttract) {
+      // Pick random characters for P1 and P2
+      const p1Random = CHARACTERS[Math.floor(Math.random() * CHARACTERS.length)]
+      const otherChars = CHARACTERS.filter(c => c.id !== p1Random.id)
+      const p2Random = otherChars[Math.floor(Math.random() * otherChars.length)]
+      
+      p1Def = p1Random
+      p2Def = p2Random
+      
+      const stages = ['cyber-city', 'volcano', 'space-station', 'neon-dojo']
+      stage = stages[Math.floor(Math.random() * stages.length)]
+      
+      // Update store state for attract mode
+      useGameStore.getState().setGameMode('attract')
+    }
+
+    engine.setupBattle(p1Def!, p2Def!, stage)
     engine.start()
 
     return () => {

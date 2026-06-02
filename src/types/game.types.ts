@@ -19,6 +19,7 @@ export type GameMode =
   | 'story'
   | 'survival'
   | 'time-attack'
+  | 'attract'
 
 export type Difficulty = 'beginner' | 'easy' | 'normal' | 'hard' | 'ultra'
 
@@ -44,6 +45,7 @@ export interface GameSettings {
   showHitboxes: boolean
   showFPS: boolean
   vibration: boolean
+  graphicsQuality: 'low' | 'medium' | 'ultra'
   controls: {
     player1: ControlMap
     player2: ControlMap

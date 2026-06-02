@@ -38,6 +38,10 @@ interface GameState {
   player2ComboTimer: number
   battleState: 'waiting' | 'starting' | 'active' | 'ko' | 'round-end'
   matchId: number
+  
+  // Training Mode Settings
+  dummyMode: 'idle' | 'block' | 'crouch' | 'crouch-block' | 'cpu'
+  trainingRefill: boolean
 
   // Actions
   setScreen: (screen: GameScreen) => void
@@ -55,6 +59,9 @@ interface GameState {
   recordRoundResult: (result: RoundResult) => void
   setPaused: (paused: boolean) => void
   resetMatch: () => void
+  setDummyMode: (mode: 'idle' | 'block' | 'crouch' | 'crouch-block' | 'cpu') => void
+  setTrainingRefill: (enabled: boolean) => void
+
 }
 
 export const useGameStore = create<GameState>()(
@@ -86,6 +93,8 @@ export const useGameStore = create<GameState>()(
     player2ComboTimer: 0,
     battleState: 'waiting',
     matchId: 0,
+    dummyMode: 'idle',
+    trainingRefill: true,
 
     setScreen: (screen) => set(state => { state.screen = screen }),
     setBattleState: (battleState) => set(state => { state.battleState = battleState }),
@@ -150,5 +159,7 @@ export const useGameStore = create<GameState>()(
       state.player1Combo = 0
       state.player2Combo = 0
     }),
+    setDummyMode: (mode) => set(state => { state.dummyMode = mode }),
+    setTrainingRefill: (enabled) => set(state => { state.trainingRefill = enabled }),
   }))
 )
