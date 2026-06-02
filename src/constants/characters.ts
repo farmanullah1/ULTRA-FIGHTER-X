@@ -221,7 +221,71 @@ export const CHARACTERS: CharacterDef[] = [
       healthBarColor: '#FF6600',
       meterColor: '#FF6600',
     },
-    moves: []
+    moves: [
+      {
+        id: 'punch-light',
+        name: 'Heavy Jab',
+        input: 'LP',
+        inputSequence: ['P'],
+        damage: 40,
+        meterGain: 15,
+        meterCost: 0,
+        cancelable: true,
+        invincible: false,
+        startup: 6,
+        active: 3,
+        recovery: 10,
+        onHit: 2,
+        onBlock: -2,
+        animationState: 'punch-light',
+        type: 'light-punch',
+        hitboxes: [
+          { frameStart: 6, frameEnd: 8, x: 0.4, y: 1.5, z: 0, width: 0.6, height: 0.4, depth: 0.4, type: 'attack', damage: 40 }
+        ]
+      },
+      {
+        id: 'special-grab',
+        name: 'Steel Press',
+        input: '⬇️↘️➡️ + K',
+        inputSequence: ['D', 'DF', 'F', 'K'],
+        damage: 150,
+        meterGain: 100,
+        meterCost: 0,
+        cancelable: false,
+        invincible: false,
+        startup: 15,
+        active: 5,
+        recovery: 30,
+        onHit: 40,
+        onBlock: -20,
+        animationState: 'special-1',
+        type: 'special',
+        hitboxes: [
+          { frameStart: 15, frameEnd: 19, x: 0.2, y: 1.0, z: 0, width: 1.5, height: 1.5, depth: 1.0, type: 'attack', damage: 150, knockback: { x: 0.1, y: 0.8, z: 0 } }
+        ]
+      },
+      {
+        id: 'super-giga',
+        name: 'Giga Impact',
+        input: '⬇️↘️➡️⬇️↘️➡️ + P',
+        inputSequence: ['D', 'DF', 'F', 'D', 'DF', 'F', 'P'],
+        damage: 350,
+        meterGain: 0,
+        meterCost: 1000,
+        cancelable: false,
+        invincible: true,
+        startup: 10,
+        active: 10,
+        recovery: 60,
+        onHit: 100,
+        onBlock: -40,
+        animationState: 'super',
+        type: 'super',
+        hitboxes: [
+          { frameStart: 10, frameEnd: 19, x: 0.5, y: 1.0, z: 0, width: 2.5, height: 2.0, depth: 1.5, type: 'attack', damage: 350, knockback: { x: 0.8, y: 0.4, z: 0 } }
+        ]
+      }
+    ]
   },
   {
     id: 'nova-star',
@@ -247,7 +311,47 @@ export const CHARACTERS: CharacterDef[] = [
       healthBarColor: '#FF00FF',
       meterColor: '#FF00FF',
     },
-    moves: []
+    moves: [
+      {
+        id: 'punch-light',
+        name: 'Star Jab',
+        input: 'LP',
+        inputSequence: ['P'],
+        damage: 30,
+        meterGain: 12,
+        meterCost: 0,
+        cancelable: true,
+        invincible: false,
+        startup: 4,
+        active: 3,
+        recovery: 7,
+        onHit: 4,
+        onBlock: 0,
+        animationState: 'punch-light',
+        type: 'light-punch',
+        hitboxes: [{ frameStart: 4, frameEnd: 6, x: 0.4, y: 1.4, z: 0, width: 0.5, height: 0.4, depth: 0.4, type: 'attack', damage: 30 }]
+      },
+      {
+        id: 'special-shot',
+        name: 'Nova Shot',
+        input: '⬇️↘️➡️ + P',
+        inputSequence: ['D', 'DF', 'F', 'P'],
+        damage: 55,
+        meterGain: 45,
+        meterCost: 0,
+        cancelable: false,
+        invincible: false,
+        startup: 11,
+        active: 4,
+        recovery: 20,
+        onHit: 10,
+        onBlock: -2,
+        animationState: 'special-1',
+        type: 'special',
+        hitboxes: [],
+        projectile: { speed: 0.45, width: 0.5, height: 0.5, depth: 0.5, damage: 55, color: '#FF00FF', glowColor: '#FF00FF', lifespan: 130 }
+      }
+    ]
   },
   {
     id: 'shadow-byte',
@@ -273,7 +377,46 @@ export const CHARACTERS: CharacterDef[] = [
       healthBarColor: '#7700FF',
       meterColor: '#7700FF',
     },
-    moves: []
+    moves: [
+      {
+        id: 'punch-light',
+        name: 'Data Tap',
+        input: 'LP',
+        inputSequence: ['P'],
+        damage: 20,
+        meterGain: 15,
+        meterCost: 0,
+        cancelable: true,
+        invincible: false,
+        startup: 3,
+        active: 2,
+        recovery: 5,
+        onHit: 6,
+        onBlock: 2,
+        animationState: 'punch-light',
+        type: 'light-punch',
+        hitboxes: [{ frameStart: 3, frameEnd: 4, x: 0.3, y: 1.3, z: 0, width: 0.4, height: 0.3, depth: 0.3, type: 'attack', damage: 20 }]
+      },
+      {
+        id: 'special-glitch',
+        name: 'Glitch Strike',
+        input: '⬇️↙️⬅️ + P',
+        inputSequence: ['D', 'DB', 'B', 'P'],
+        damage: 80,
+        meterGain: 60,
+        meterCost: 0,
+        cancelable: false,
+        invincible: true,
+        startup: 14,
+        active: 6,
+        recovery: 22,
+        onHit: 12,
+        onBlock: -8,
+        animationState: 'special-1',
+        type: 'special',
+        hitboxes: [{ frameStart: 14, frameEnd: 19, x: -1.5, y: 1.2, z: 0, width: 1.0, height: 1.0, depth: 0.5, type: 'attack', damage: 80, knockback: { x: 0.4, y: 0.2, z: 0 } }]
+      }
+    ]
   },
   {
     id: 'phoenix-rise',
@@ -299,6 +442,45 @@ export const CHARACTERS: CharacterDef[] = [
       healthBarColor: '#FF003C',
       meterColor: '#FF003C',
     },
-    moves: []
+    moves: [
+      {
+        id: 'punch-light',
+        name: 'Heat Jab',
+        input: 'LP',
+        inputSequence: ['P'],
+        damage: 45,
+        meterGain: 20,
+        meterCost: 0,
+        cancelable: true,
+        invincible: false,
+        startup: 7,
+        active: 3,
+        recovery: 12,
+        onHit: 1,
+        onBlock: -3,
+        animationState: 'punch-light',
+        type: 'light-punch',
+        hitboxes: [{ frameStart: 7, frameEnd: 9, x: 0.5, y: 1.5, z: 0, width: 0.6, height: 0.5, depth: 0.5, type: 'attack', damage: 45 }]
+      },
+      {
+        id: 'special-rising',
+        name: 'Phoenix Rise',
+        input: '➡️⬇️↘️ + P',
+        inputSequence: ['F', 'D', 'DF', 'P'],
+        damage: 120,
+        meterGain: 70,
+        meterCost: 0,
+        cancelable: false,
+        invincible: true,
+        startup: 5,
+        active: 12,
+        recovery: 35,
+        onHit: 30,
+        onBlock: -25,
+        animationState: 'special-1',
+        type: 'special',
+        hitboxes: [{ frameStart: 5, frameEnd: 16, x: 0.4, y: 1.0, z: 0, width: 1.0, height: 2.5, depth: 1.0, type: 'attack', damage: 120, knockback: { x: 0.1, y: 0.7, z: 0 } }]
+      }
+    ]
   }
 ]

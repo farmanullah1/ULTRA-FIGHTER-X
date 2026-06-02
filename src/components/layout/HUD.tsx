@@ -1,6 +1,7 @@
 import { useGameStore } from '@stores/gameStore'
 import { HealthBar } from '../ui/HealthBar'
 import { RoundTimer } from '../ui/RoundTimer'
+import { MeterBar } from '../ui/MeterBar'
 import { CHARACTERS } from '@constants/characters'
 import type { CharacterDef } from '@game-types/character.types'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -8,6 +9,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 export const HUD: React.FC = () => {
   const { 
     player1Health, player2Health, 
+    player1Meter, player2Meter,
     player1CharId, player2CharId,
     roundTimeLeft, battleState,
     player1Combo, player2Combo,
@@ -79,24 +81,42 @@ export const HUD: React.FC = () => {
       </div>
 
       {/* Top HUD */}
-      <div className="flex justify-between w-full items-start z-10">
-        <HealthBar 
-          player={1} 
-          health={player1Health} 
-          maxHealth={p1Def.stats.health} 
-          name={p1Def.name}
-          color={p1Def.colors.healthBarColor}
-        />
-        
-        <RoundTimer time={roundTimeLeft} />
-        
-        <HealthBar 
-          player={2} 
-          health={player2Health} 
-          maxHealth={p2Def.stats.health} 
-          name={p2Def.name}
-          color={p2Def.colors.healthBarColor}
-        />
+      <div className="flex flex-col w-full">
+        <div className="flex justify-between w-full items-start z-10">
+          <HealthBar 
+            player={1} 
+            health={player1Health} 
+            maxHealth={p1Def.stats.health} 
+            name={p1Def.name}
+            color={p1Def.colors.healthBarColor}
+          />
+          
+          <RoundTimer time={roundTimeLeft} />
+          
+          <HealthBar 
+            player={2} 
+            health={player2Health} 
+            maxHealth={p2Def.stats.health} 
+            name={p2Def.name}
+            color={p2Def.colors.healthBarColor}
+          />
+        </div>
+
+        {/* Meter Bars */}
+        <div className="flex justify-between w-full z-10 px-4">
+          <MeterBar 
+            player={1} 
+            meter={player1Meter} 
+            maxMeter={1000} 
+            color={p1Def.colors.meterColor} 
+          />
+          <MeterBar 
+            player={2} 
+            meter={player2Meter} 
+            maxMeter={1000} 
+            color={p2Def.colors.meterColor} 
+          />
+        </div>
       </div>
 
       {/* Combo Counters */}
@@ -137,8 +157,6 @@ export const HUD: React.FC = () => {
           </AnimatePresence>
         </div>
       </div>
-
-      {/* Meter Bars can go here */}
     </div>
   )
 }

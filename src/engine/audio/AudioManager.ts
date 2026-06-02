@@ -8,6 +8,8 @@ export class AudioManager {
     this.loadSFX('hit', '/assets/sounds/hit.wav')
     this.loadSFX('block', '/assets/sounds/block.wav')
     this.loadSFX('swing', '/assets/sounds/swing.wav')
+    this.loadSFX('super_activate', '/assets/sounds/super_activate.wav')
+    this.loadSFX('super_impact', '/assets/sounds/super_impact.wav')
   }
 
   private loadSFX(name: string, path: string): void {

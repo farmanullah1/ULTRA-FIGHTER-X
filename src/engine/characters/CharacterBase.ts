@@ -45,6 +45,7 @@ export class CharacterBase {
 
   // Callbacks
   onSpawnProjectile: ((config: any, pos: any, facingRight: boolean) => void) | null = null
+  onSuperFlash: (() => void) | null = null
 
   constructor(def: CharacterDef, startX: number, facingRight: boolean) {
     this.id = def.id
@@ -175,10 +176,19 @@ export class CharacterBase {
   private triggerAttack(type: string, _frame: number): void {
     const move = this.def.moves.find(m => m.id === type)
     if (move && !this.currentMove) {
+      // Check Meter Cost
+      if (move.meterCost > 0 && this.meter < move.meterCost) return
+
+      this.meter -= move.meterCost
       this.currentMove = move
       this.moveFrame = 0
       this.hasLandedHit = false
       this.currentAnimation = move.animationState
+      
+      // Signal Super Flash
+      if (move.type === 'super') {
+        this.onSuperFlash?.()
+      }
     }
   }
 
@@ -191,13 +201,14 @@ export class CharacterBase {
     this.body.velocity.y = knockback.y
     this.body.velocity.z = knockback.z
     this.currentAnimation = 'hit-stun'
-    this.meter = Math.min(MAX_METER, this.meter + 20)
+    this.meter = Math.min(MAX_METER, this.meter + 40)
   }
 
   receiveBlock(damage: number, blockstun: number): void {
     this.health = Math.max(0, this.health - damage)
     this.blockstunTimer = blockstun
     this.currentAnimation = 'block'
+    this.meter = Math.min(MAX_METER, this.meter + 10)
   }
 
   applyHitstop(frames: number): void {

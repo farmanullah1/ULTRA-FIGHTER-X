@@ -38,6 +38,8 @@ export class GameEngine3D {
   // Cinematic Camera State
   private shakeTimer: number = 0
   private shakeIntensity: number = 0
+  private superFlashTimer: number = 0
+  private isSuperFlashActive: boolean = false
 
   // Match State
   battleState: BattleState = 'waiting'
@@ -133,6 +135,9 @@ export class GameEngine3D {
 
     this.player1.onSpawnProjectile = (c, p, f) => spawnProj(c, p, f, 'p1')
     this.player2.onSpawnProjectile = (c, p, f) => spawnProj(c, p, f, 'p2')
+    
+    this.player1.onSuperFlash = () => this.triggerSuperFlash(this.player1!)
+    this.player2.onSuperFlash = () => this.triggerSuperFlash(this.player2!)
 
     const mode = useGameStore.getState().gameMode
     if (mode === 'arcade' || mode === 'survival') {
@@ -164,10 +169,33 @@ export class GameEngine3D {
     this.gameLoop.start(this.update.bind(this), this.render.bind(this))
   }
 
+  private triggerSuperFlash(character: CharacterBase): void {
+    this.isSuperFlashActive = true
+    this.superFlashTimer = 60 // 1 second
+    
+    // Darken lights for drama
+    this.scene.lights.forEach(l => { if (l.name !== 'hemiLight') l.intensity *= 0.2 })
+    
+    this.audio.playSFX('super_activate')
+    this.particles.spawn('super-explosion', character.body.position as any, character.def.colors.aura)
+    this.shakeCamera(0.5, 30)
+  }
+
   private update(_deltaTime: number, frame: number): void {
     if (!this.player1 || !this.player2) return
 
     this.input.update(frame)
+
+    // Handle Super Flash
+    if (this.superFlashTimer > 0) {
+      this.superFlashTimer--
+      if (this.superFlashTimer <= 0) {
+        this.isSuperFlashActive = false
+        this.scene.lights.forEach(l => { if (l.name !== 'hemiLight') l.intensity *= 5 }) // Restore lights
+      }
+      this.updateCamera()
+      return // Freeze match logic during flash
+    }
 
     this.projectiles = this.projectiles.filter(p => {
       p.update(this.particles)
@@ -306,9 +334,19 @@ export class GameEngine3D {
       targetPos.y += (Math.random() - 0.5) * this.shakeIntensity
       this.shakeTimer--
     }
+
+    if (this.isSuperFlashActive) {
+      // Zoom in on the attacker
+      const activePlayer = this.player1.currentMove?.type === 'super' ? this.player1 : this.player2
+      targetPos.copyFrom(activePlayer.body.position as any)
+      targetPos.y += 1.5
+      this.camera.radius = 6
+    } else {
+      const dist = Math.abs(this.player1.body.position.x - this.player2.body.position.x)
+      this.camera.radius = Math.max(8, Math.min(dist * 1.5, 18))
+    }
+
     this.camera.setTarget(targetPos)
-    const dist = Math.abs(this.player1.body.position.x - this.player2.body.position.x)
-    this.camera.radius = Math.max(8, Math.min(dist * 1.5, 18))
   }
 
   private render(_interpolation: number): void { }
