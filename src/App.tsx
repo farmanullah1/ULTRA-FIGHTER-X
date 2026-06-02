@@ -4,11 +4,13 @@ import { GameCanvas } from '@components/game/GameCanvas'
 import { HUD } from '@components/layout/HUD'
 import { CharacterSelect } from '@components/menus/CharacterSelect'
 import { StageSelect } from '@components/menus/StageSelect'
+import { SettingsMenu } from '@components/menus/SettingsMenu'
+import { PauseMenu } from '@components/game/PauseMenu'
 import { AnimatePresence, motion } from 'framer-motion'
 import './styles/globals.css'
 
 function App() {
-  const { screen, setScreen } = useGameStore()
+  const { screen, setScreen, isPaused } = useGameStore()
 
   return (
     <div className="w-full h-full bg-dark-900 text-white overflow-hidden font-body select-none">
@@ -29,6 +31,7 @@ function App() {
               className="w-full h-full"
             >
               <HUD />
+              {isPaused && <PauseMenu />}
             </motion.div>
           ) : screen === 'character-select' ? (
             <motion.div
@@ -50,6 +53,16 @@ function App() {
             >
               <StageSelect />
             </motion.div>
+          ) : screen === 'settings' ? (
+            <motion.div
+              key="settings"
+              initial={{ opacity: 0, scale: 1.1 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.9 }}
+              className="w-full h-full"
+            >
+              <SettingsMenu />
+            </motion.div>
           ) : (
             <motion.div
               key="main-menu"
@@ -70,7 +83,7 @@ function App() {
                   <MenuButton label="ARCADE MODE" onClick={() => setScreen('character-select')} primary />
                   <MenuButton label="VERSUS" onClick={() => setScreen('character-select')} />
                   <MenuButton label="TRAINING" onClick={() => setScreen('character-select')} />
-                  <MenuButton label="SETTINGS" onClick={() => {}} />
+                  <MenuButton label="SETTINGS" onClick={() => setScreen('settings')} />
                 </div>
               </div>
             </motion.div>

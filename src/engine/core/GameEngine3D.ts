@@ -66,6 +66,13 @@ export class GameEngine3D {
     window.addEventListener('resize', () => {
       this.engine.resize()
     })
+
+    window.addEventListener('keydown', (e) => {
+      if (e.code === 'Escape' && useGameStore.getState().screen === 'battle') {
+        const current = useGameStore.getState().isPaused
+        useGameStore.getState().setPaused(!current)
+      }
+    })
   }
 
   private initScene(): void {
@@ -183,6 +190,8 @@ export class GameEngine3D {
 
   private update(_deltaTime: number, frame: number): void {
     if (!this.player1 || !this.player2) return
+
+    if (useGameStore.getState().isPaused) return
 
     this.input.update(frame)
 
