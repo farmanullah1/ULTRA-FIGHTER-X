@@ -124,19 +124,30 @@ export class InputManager {
   checkInputSequence(
     buffer: InputBuffer,
     sequence: string[],
-    windowFrames: number = 25
+    windowFrames: number = 30
   ): boolean {
+    if (buffer.frames.length < sequence.length) return false
+
     const recent = buffer.frames.slice(-windowFrames)
-    let seqIdx = 0
-    for (const frame of recent) {
-      const input = frame.state
-      const expected = sequence[seqIdx]
-      if (this.matchesInputToken(input, expected)) {
-        seqIdx++
-        if (seqIdx >= sequence.length) return true
+    let seqIdx = sequence.length - 1 // Start from the end of the sequence (the button press)
+    
+    // The last input MUST be the button press or the final direction
+    const lastFrame = recent[recent.length - 1].state
+    if (!this.matchesInputToken(lastFrame, sequence[seqIdx])) return false
+    
+    seqIdx-- // Move to the previous part of the sequence
+
+    // Iterate backwards through the buffer to find the rest of the sequence
+    for (let i = recent.length - 2; i >= 0; i--) {
+      if (seqIdx < 0) return true // Sequence completed!
+
+      const frame = recent[i].state
+      if (this.matchesInputToken(frame, sequence[seqIdx])) {
+        seqIdx--
       }
     }
-    return false
+
+    return seqIdx < 0
   }
 
   private matchesInputToken(input: InputState, token: string): boolean {
@@ -145,12 +156,13 @@ export class InputManager {
       'K': i => i.kick,
       'HP': i => i.heavyPunch,
       'HK': i => i.heavyKick,
-      'D': i => i.down,
+      'D': i => i.down && !i.left && !i.right,
       'U': i => i.up,
       'F': i => i.right,
       'B': i => i.left,
       'DF': i => i.down && i.right,
       'DB': i => i.down && i.left,
+      'S': i => i.special,
     }
     return map[token]?.(input) ?? false
   }

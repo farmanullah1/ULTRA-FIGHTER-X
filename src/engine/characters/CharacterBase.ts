@@ -43,6 +43,9 @@ export class CharacterBase {
   comboCount: number = 0
   lastHitFrame: number = 0
 
+  // Callbacks
+  onSpawnProjectile: ((config: any, pos: any, facingRight: boolean) => void) | null = null
+
   constructor(def: CharacterDef, startX: number, facingRight: boolean) {
     this.id = def.id
     this.def = def
@@ -61,7 +64,7 @@ export class CharacterBase {
     }
   }
 
-  update(input: InputState, inputBuffer: InputBuffer, frame: number, physics: PhysicsEngine): void {
+  update(input: InputState, inputBuffer: InputBuffer, frame: number, physics: PhysicsEngine, inputManager: any): void {
     // Update hitstop
     if (this.hitstopTimer > 0) {
       this.hitstopTimer--
@@ -78,7 +81,7 @@ export class CharacterBase {
     const isStunned = this.hitstunTimer > 0 || this.blockstunTimer > 0
     
     if (!isStunned && !this.isKnockedDown) {
-      this.processInput(input, inputBuffer, frame, physics)
+      this.processInput(input, inputBuffer, frame, physics, inputManager)
     }
     
     physics.update(this.body)
@@ -99,16 +102,43 @@ export class CharacterBase {
 
   private processInput(
     input: InputState,
-    _buffer: InputBuffer,
+    buffer: InputBuffer,
     frame: number,
-    physics: PhysicsEngine
+    physics: PhysicsEngine,
+    inputManager: any
   ): void {
     const { walkSpeed, jumpHeight } = this.def.stats
+
+    if (this.currentMove) return
+
+    // 1. Check for Special Moves first (highest precedence)
+    const sortedMoves = [...this.def.moves].sort((a, b) => b.inputSequence.length - a.inputSequence.length)
+
+    for (const move of sortedMoves) {
+      if (move.inputSequence.length > 1) {
+        // Adjust sequence for facing direction (F/B flip)
+        const adjustedSequence = move.inputSequence.map(token => {
+          if (!this.facingRight) {
+            if (token === 'F') return 'B'
+            if (token === 'B') return 'F'
+            if (token === 'DF') return 'DB'
+            if (token === 'DB') return 'DF'
+          }
+          return token
+        })
+
+        if (inputManager.checkInputSequence(buffer, adjustedSequence)) {
+          this.triggerAttack(move.id, frame)
+          return
+        }
+      }
+    }
 
     // Basic movement
     const moveDir = this.facingRight
       ? (input.right ? 1 : input.left ? -1 : 0)
       : (input.left ? 1 : input.right ? -1 : 0)
+
 
     if (moveDir !== 0 && !this.currentMove) {
       this.body.velocity.x = moveDir * walkSpeed
@@ -177,6 +207,17 @@ export class CharacterBase {
   private updateAnimation(): void {
     if (this.currentMove) {
       this.moveFrame++
+      
+      // Spawn projectile on first active frame
+      if (this.moveFrame === this.currentMove.startup && this.currentMove.projectile) {
+        const spawnPos = {
+          x: this.body.position.x + (this.facingRight ? 1 : -1),
+          y: this.body.position.y + 1.5,
+          z: this.body.position.z
+        }
+        this.onSpawnProjectile?.(this.currentMove.projectile, spawnPos, this.facingRight)
+      }
+
       const totalFrames = this.currentMove.startup + this.currentMove.active + this.currentMove.recovery
       if (this.moveFrame >= totalFrames) {
         this.currentMove = null

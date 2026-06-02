@@ -46,6 +46,56 @@ export const CHARACTERS: CharacterDef[] = [
         hitboxes: [
           { frameStart: 4, frameEnd: 6, x: 0.5, y: 1.2, z: 0, width: 0.6, height: 0.4, depth: 0.4, type: 'attack', damage: 30 }
         ]
+      },
+      {
+        id: 'special-bolt',
+        name: 'Static Bolt',
+        input: '⬇️↘️➡️ + P',
+        inputSequence: ['D', 'DF', 'F', 'P'],
+        damage: 60,
+        meterGain: 50,
+        meterCost: 0,
+        cancelable: false,
+        invincible: false,
+        startup: 12,
+        active: 5,
+        recovery: 20,
+        onHit: 10,
+        onBlock: -5,
+        animationState: 'special-1',
+        type: 'special',
+        hitboxes: [],
+        projectile: {
+          speed: 0.4,
+          width: 0.6,
+          height: 0.6,
+          depth: 0.6,
+          damage: 60,
+          color: '#00FFFF',
+          glowColor: '#00FFFF',
+          lifespan: 120
+        }
+      },
+      {
+        id: 'special-kick',
+        name: 'Thunder Kick',
+        input: '⬇️↙️⬅️ + K',
+        inputSequence: ['D', 'DB', 'B', 'K'],
+        damage: 100,
+        meterGain: 80,
+        meterCost: 0,
+        cancelable: false,
+        invincible: true,
+        startup: 8,
+        active: 15,
+        recovery: 25,
+        onHit: 20,
+        onBlock: -15,
+        animationState: 'special-2',
+        type: 'special',
+        hitboxes: [
+          { frameStart: 8, frameEnd: 23, x: 0.5, y: 1.0, z: 0, width: 1.5, height: 1.0, depth: 0.8, type: 'attack', damage: 100, knockback: { x: 0.5, y: 0.3, z: 0 } }
+        ]
       }
     ]
   },
