@@ -1,6 +1,6 @@
 import type { CharacterBase } from '@engine/characters/CharacterBase'
-import type { InputState } from '@types/input.types'
-import type { Difficulty } from '@types/game.types'
+import type { InputState } from '@game-types/input.types'
+import type { Difficulty } from '@game-types/game.types'
 
 interface DifficultyConfig {
   reactionFrames: number

@@ -1,8 +1,8 @@
-import React from 'react'
 import { useGameStore } from '@stores/gameStore'
 import { HealthBar } from '../ui/HealthBar'
 import { RoundTimer } from '../ui/RoundTimer'
 import { CHARACTERS } from '@constants/characters'
+import type { CharacterDef } from '@game-types/character.types'
 
 export const HUD: React.FC = () => {
   const { 
@@ -11,8 +11,8 @@ export const HUD: React.FC = () => {
     roundTimeLeft 
   } = useGameStore()
 
-  const p1Def = CHARACTERS.find(c => c.id === player1CharId) || CHARACTERS[0]
-  const p2Def = CHARACTERS.find(c => c.id === player2CharId) || CHARACTERS[1]
+  const p1Def = CHARACTERS.find((c: CharacterDef) => c.id === player1CharId) || CHARACTERS[0]
+  const p2Def = CHARACTERS.find((c: CharacterDef) => c.id === player2CharId) || CHARACTERS[1]
 
   return (
     <div className="absolute inset-0 pointer-events-none p-8 flex flex-col items-center">

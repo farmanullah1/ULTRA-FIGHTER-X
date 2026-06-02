@@ -1,7 +1,7 @@
 import { PhysicsEngine, type PhysicsBody } from '@engine/core/PhysicsEngine'
-import type { CharacterDef, AnimationState, Move } from '@types/character.types'
-import type { InputState } from '@types/input.types'
-import type { InputBuffer } from '@types/input.types'
+import type { CharacterDef, AnimationState, Move } from '@game-types/character.types'
+import type { InputState } from '@game-types/input.types'
+import type { InputBuffer } from '@game-types/input.types'
 import { STARTING_HEALTH, MAX_METER } from '@constants/gameConstants'
 import type { AbstractMesh, TransformNode, AnimationGroup } from '@babylonjs/core'
 
@@ -82,7 +82,7 @@ export class CharacterBase {
     
     physics.update(this.body)
     this.update3DNode()
-    this.updateAnimation(frame)
+    this.updateAnimation()
   }
 
   private update3DNode(): void {
@@ -98,7 +98,7 @@ export class CharacterBase {
 
   private processInput(
     input: InputState,
-    buffer: InputBuffer,
+    _buffer: InputBuffer,
     frame: number,
     physics: PhysicsEngine
   ): void {
@@ -172,7 +172,7 @@ export class CharacterBase {
     this.hitstopTimer = frames
   }
 
-  private updateAnimation(_frame: number): void {
+  private updateAnimation(): void {
     if (this.currentMove) {
       this.moveFrame++
       const totalFrames = this.currentMove.startup + this.currentMove.active + this.currentMove.recovery

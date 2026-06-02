@@ -1,5 +1,5 @@
-import type { Vector3D } from '@types/game.types'
-import type { HitboxFrame } from '@types/character.types'
+import type { Vector3D } from '@game-types/game.types'
+import type { HitboxFrame } from '@game-types/character.types'
 
 export interface Box3D {
   min: Vector3D

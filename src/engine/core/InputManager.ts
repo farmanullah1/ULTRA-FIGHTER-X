@@ -1,4 +1,5 @@
-import type { InputState, InputBuffer, InputFrame, ControlMap } from '@types/input.types'
+import type { InputState, InputBuffer } from '@game-types/input.types'
+import type { ControlMap } from '@game-types/game.types'
 import { INPUT_BUFFER_SIZE } from '@constants/gameConstants'
 
 const EMPTY_INPUT: InputState = {
@@ -14,7 +15,6 @@ export class InputManager {
   private p1Buffer: InputBuffer = { frames: [], maxLength: INPUT_BUFFER_SIZE }
   private p2Buffer: InputBuffer = { frames: [], maxLength: INPUT_BUFFER_SIZE }
   private controls: { player1: ControlMap; player2: ControlMap }
-  private frame: number = 0
 
   // Gamepad support
   private gamepads: (Gamepad | null)[] = []
@@ -56,7 +56,6 @@ export class InputManager {
   }
 
   update(frame: number): void {
-    this.frame = frame
     this.pollGamepads()
     
     this.player1State = this.buildInputState(this.controls.player1, 0)

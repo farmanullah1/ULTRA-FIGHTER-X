@@ -1,5 +1,5 @@
 import { GRAVITY, MAX_FALL_SPEED, FLOOR_Y, WALL_LEFT, WALL_RIGHT } from '@constants/gameConstants'
-import type { Vector3D } from '@types/game.types'
+import type { Vector3D } from '@game-types/game.types'
 
 export interface PhysicsBody {
   position: Vector3D

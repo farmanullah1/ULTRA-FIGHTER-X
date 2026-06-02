@@ -1,4 +1,4 @@
-import { Vector3D } from './game.types'
+import type { Vector3D } from './game.types'
 
 export type CharacterID = 
   | 'kai-storm'

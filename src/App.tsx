@@ -1,4 +1,3 @@
-import React from 'react'
 import { useGameStore } from '@stores/gameStore'
 import { GameCanvas } from '@components/game/GameCanvas'
 import { HUD } from '@components/layout/HUD'

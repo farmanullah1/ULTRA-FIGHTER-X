@@ -1,10 +1,10 @@
 import { create } from 'zustand'
 import { immer } from 'zustand/middleware/immer'
 import { persist } from 'zustand/middleware'
-import type { GameSettings } from '@types/game.types'
+import type { GameSettings } from '@game-types/game.types'
 import { DEFAULT_CONTROLS_P1, DEFAULT_CONTROLS_P2 } from '@constants/gameConstants'
 
-interface SettingsState extends GameSettings {
+interface SettingsActions {
   setVolume: (type: 'sfx' | 'music', val: number) => void
   setRoundTime: (t: number) => void
   setRounds: (r: number) => void
@@ -13,6 +13,8 @@ interface SettingsState extends GameSettings {
   toggleFPS: () => void
   resetToDefaults: () => void
 }
+
+type SettingsState = GameSettings & SettingsActions
 
 const defaults: GameSettings = {
   sfxVolume: 0.8,
@@ -33,15 +35,15 @@ export const useSettingsStore = create<SettingsState>()(
   persist(
     immer((set) => ({
       ...defaults,
-      setVolume: (type, val) => set(s => {
+      setVolume: (type, val) => set((s) => {
         if (type === 'sfx') s.sfxVolume = val
         else s.musicVolume = val
       }),
-      setRoundTime: (t) => set(s => { s.roundTime = t }),
-      setRounds: (r) => set(s => { s.rounds = r }),
-      setDifficulty: (d) => set(s => { s.difficulty = d }),
-      toggleHitboxes: () => set(s => { s.showHitboxes = !s.showHitboxes }),
-      toggleFPS: () => set(s => { s.showFPS = !s.showFPS }),
+      setRoundTime: (t) => set((s) => { s.roundTime = t }),
+      setRounds: (r) => set((s) => { s.rounds = r }),
+      setDifficulty: (d) => set((s) => { s.difficulty = d }),
+      toggleHitboxes: () => set((s) => { s.showHitboxes = !s.showHitboxes }),
+      toggleFPS: () => set((s) => { s.showFPS = !s.showFPS }),
       resetToDefaults: () => set(() => ({ ...defaults })),
     })),
     { name: 'ufx-settings' }

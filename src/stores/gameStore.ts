@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { immer } from 'zustand/middleware/immer'
-import type { GameScreen, GameMode, RoundResult, MatchStats } from '@types/game.types'
-import type { CharacterID } from '@types/character.types'
+import type { GameScreen, GameMode, RoundResult, MatchStats } from '@game-types/game.types'
+import type { CharacterID } from '@game-types/character.types'
 
 interface GameState {
   screen: GameScreen

@@ -1,4 +1,4 @@
-import type { CharacterDef } from '@types/character.types'
+import type { CharacterDef } from '@game-types/character.types'
 
 export const CHARACTERS: CharacterDef[] = [
   {

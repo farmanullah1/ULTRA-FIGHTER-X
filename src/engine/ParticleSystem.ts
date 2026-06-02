@@ -1,4 +1,4 @@
-import { Scene, ParticleSystem, Vector3, Color4, Texture, GPUParticleSystem, Engine } from '@babylonjs/core'
+import { Scene, ParticleSystem, Vector3, Color4, Texture, GPUParticleSystem } from '@babylonjs/core'
 
 export type ParticleType = 
   | 'hit-spark'
@@ -15,7 +15,7 @@ export class ParticleSystemManager {
     this.scene = scene
   }
 
-  spawn(type: ParticleType, position: Vector3, color: string = '#FFFFFF'): void {
+  spawn(_type: ParticleType, position: Vector3, color: string = '#FFFFFF'): void {
     const ps = GPUParticleSystem.IsSupported 
       ? new GPUParticleSystem('ps', { capacity: 500 }, this.scene)
       : new ParticleSystem('ps', 500, this.scene)
