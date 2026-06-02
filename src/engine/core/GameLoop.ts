@@ -11,6 +11,7 @@ export class GameLoop {
   private isRunning: boolean = false
   private updateCallback: LoopCallback | null = null
   private renderCallback: RenderCallback | null = null
+  private timeScale: number = 1.0
 
   // Deterministic fixed-timestep loop with interpolation
   start(
@@ -24,6 +25,10 @@ export class GameLoop {
     this.tick(this.lastTime)
   }
 
+  setTimeScale(scale: number): void {
+    this.timeScale = scale
+  }
+
   stop(): void {
     this.isRunning = false
     cancelAnimationFrame(this.animationId)
@@ -32,7 +37,7 @@ export class GameLoop {
   private tick = (timestamp: number): void => {
     if (!this.isRunning) return
 
-    const elapsed = Math.min(timestamp - this.lastTime, 100) // clamp to avoid spiral
+    const elapsed = Math.min(timestamp - this.lastTime, 100) * this.timeScale
     this.lastTime = timestamp
     this.accumulator += elapsed
 

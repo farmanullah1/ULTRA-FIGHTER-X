@@ -36,9 +36,13 @@ interface GameState {
   player2Combo: number
   player1ComboTimer: number
   player2ComboTimer: number
+  battleState: 'waiting' | 'starting' | 'active' | 'ko' | 'round-end'
+  matchId: number
 
   // Actions
   setScreen: (screen: GameScreen) => void
+  setBattleState: (state: 'waiting' | 'starting' | 'active' | 'ko' | 'round-end') => void
+  startNewMatch: () => void
   setGameMode: (mode: GameMode) => void
   selectCharacter: (player: 1 | 2, id: CharacterID) => void
   selectColor: (player: 1 | 2, index: number) => void
@@ -80,8 +84,20 @@ export const useGameStore = create<GameState>()(
     player2Combo: 0,
     player1ComboTimer: 0,
     player2ComboTimer: 0,
+    battleState: 'waiting',
+    matchId: 0,
 
     setScreen: (screen) => set(state => { state.screen = screen }),
+    setBattleState: (battleState) => set(state => { state.battleState = battleState }),
+    startNewMatch: () => set(state => {
+      state.matchId++
+      state.player1Health = 1000
+      state.player2Health = 1000
+      state.roundTimeLeft = 99
+      state.battleState = 'waiting'
+      state.player1Combo = 0
+      state.player2Combo = 0
+    }),
     setGameMode: (mode) => set(state => { state.gameMode = mode }),
     selectCharacter: (player, id) => set(state => {
       if (player === 1) state.player1CharId = id

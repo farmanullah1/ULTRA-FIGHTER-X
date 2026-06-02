@@ -13,7 +13,6 @@ export interface HitResult {
   blockstun: number
   knockback: Vector3D
   hitType: 'light' | 'heavy' | 'special' | 'super'
-  wasTradeable: boolean
 }
 
 export class CollisionDetector {
@@ -37,37 +36,62 @@ export class CollisionDetector {
     originZ: number,
     facingRight: boolean
   ): Box3D {
-    const flippedX = facingRight ? hitbox.x : -(hitbox.x + hitbox.width)
-    const x = originX + flippedX
+    // If facing left, we flip the X offset.
+    const width = hitbox.width
+    const offsetX = facingRight ? hitbox.x : -(hitbox.x + width)
+    
+    const x = originX + offsetX
     const y = originY + hitbox.y
     const z = originZ + hitbox.z
 
     return {
-      min: { x, y, z },
+      min: { x, y, z: z - hitbox.depth / 2 },
       max: {
-        x: x + hitbox.width,
+        x: x + width,
         y: y + hitbox.height,
-        z: z + hitbox.depth,
+        z: z + hitbox.depth / 2,
       },
     }
   }
 
+  // Simple hurtbox for character (can be expanded to multiple boxes later)
+  getCharacterHurtbox(
+    x: number,
+    y: number,
+    z: number,
+    width: number,
+    height: number,
+    depth: number
+  ): Box3D {
+    return {
+      min: { x: x - width / 2, y, z: z - depth / 2 },
+      max: { x: x + width / 2, y: y + height, z: z + depth / 2 }
+    }
+  }
+
   checkAttackHit(
-    attackBox: Box3D,
-    hurtBox: Box3D,
-    hitboxDef: HitboxFrame,
+    attackerX: number, attackerY: number, attackerZ: number, facingRight: boolean,
+    moveHitboxes: HitboxFrame[], moveFrame: number,
+    victimHurtbox: Box3D,
     isBlocking: boolean
   ): HitResult | null {
-    if (!this.boxesOverlap(attackBox, hurtBox)) return null
+    const activeHitbox = moveHitboxes.find(h => moveFrame >= h.frameStart && moveFrame <= h.frameEnd)
+    if (!activeHitbox) return null
 
-    return {
-      hit: true,
-      damage: isBlocking ? Math.floor((hitboxDef.damage ?? 0) * 0.1) : (hitboxDef.damage ?? 0),
-      hitstun: isBlocking ? 0 : (hitboxDef.hitstun ?? 15),
-      blockstun: isBlocking ? (hitboxDef.blockstun ?? 12) : 0,
-      knockback: hitboxDef.knockback ?? { x: 0.1, y: 0.05, z: 0 },
-      hitType: 'light',
-      wasTradeable: false,
+    const worldAttackBox = this.toWorldBox(activeHitbox, attackerX, attackerY, attackerZ, facingRight)
+
+    if (this.boxesOverlap(worldAttackBox, victimHurtbox)) {
+      const damage = isBlocking ? Math.floor((activeHitbox.damage ?? 0) * 0.1) : (activeHitbox.damage ?? 0)
+      return {
+        hit: true,
+        damage,
+        hitstun: isBlocking ? 0 : (activeHitbox.hitstun ?? 15),
+        blockstun: isBlocking ? (activeHitbox.blockstun ?? 12) : 0,
+        knockback: activeHitbox.knockback ?? { x: 0.1, y: 0.05, z: 0 },
+        hitType: 'light'
+      }
     }
+
+    return null
   }
 }

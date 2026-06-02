@@ -32,6 +32,7 @@ export class CharacterBase {
   getupTimer: number = 0
   currentMove: Move | null = null
   moveFrame: number = 0
+  hasLandedHit: boolean = false
   isInvincible: boolean = false
   isBlocking: boolean = false
   
@@ -146,6 +147,7 @@ export class CharacterBase {
     if (move && !this.currentMove) {
       this.currentMove = move
       this.moveFrame = 0
+      this.hasLandedHit = false
       this.currentAnimation = move.animationState
     }
   }
