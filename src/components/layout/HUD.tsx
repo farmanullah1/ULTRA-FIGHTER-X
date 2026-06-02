@@ -10,7 +10,8 @@ export const HUD: React.FC = () => {
     player1Health, player2Health, 
     player1CharId, player2CharId,
     roundTimeLeft, battleState,
-    player1Combo, player2Combo
+    player1Combo, player2Combo,
+    currentRound
   } = useGameStore()
 
   const p1Def = CHARACTERS.find((c: CharacterDef) => c.id === player1CharId) || CHARACTERS[0]
@@ -23,12 +24,17 @@ export const HUD: React.FC = () => {
         <AnimatePresence>
           {battleState === 'starting' && (
             <motion.div
-              initial={{ scale: 0.5, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 2, opacity: 0 }}
-              className="text-9xl font-display font-black text-neon-cyan italic tracking-tighter drop-shadow-glow"
+              initial={{ opacity: 0, y: 100 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 2 }}
+              className="flex flex-col items-center"
             >
-              READY?
+              <motion.span className="text-4xl font-display text-neon-cyan tracking-[1em] mb-4">
+                {currentRound >= 3 ? 'FINAL ROUND' : `ROUND ${currentRound}`}
+              </motion.span>
+              <motion.h2 className="text-9xl font-display font-black text-white italic tracking-tighter drop-shadow-glow">
+                READY?
+              </motion.h2>
             </motion.div>
           )}
           {battleState === 'active' && roundTimeLeft > 97 && (

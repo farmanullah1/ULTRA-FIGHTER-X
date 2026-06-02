@@ -123,7 +123,79 @@ export const CHARACTERS: CharacterDef[] = [
       healthBarColor: '#39FF14',
       meterColor: '#39FF14',
     },
-    moves: []
+    moves: [
+      {
+        id: 'punch-light',
+        name: 'Toxic Jab',
+        input: 'LP',
+        inputSequence: ['P'],
+        damage: 25,
+        meterGain: 10,
+        meterCost: 0,
+        cancelable: true,
+        invincible: false,
+        startup: 3,
+        active: 3,
+        recovery: 6,
+        onHit: 5,
+        onBlock: 1,
+        animationState: 'punch-light',
+        type: 'light-punch',
+        hitboxes: [
+          { frameStart: 3, frameEnd: 5, x: 0.4, y: 1.3, z: 0, width: 0.5, height: 0.3, depth: 0.3, type: 'attack', damage: 25 }
+        ]
+      },
+      {
+        id: 'special-dart',
+        name: 'Toxic Dart',
+        input: '⬇️↘️➡️ + P',
+        inputSequence: ['D', 'DF', 'F', 'P'],
+        damage: 45,
+        meterGain: 40,
+        meterCost: 0,
+        cancelable: false,
+        invincible: false,
+        startup: 10,
+        active: 4,
+        recovery: 18,
+        onHit: 8,
+        onBlock: -4,
+        animationState: 'special-1',
+        type: 'special',
+        hitboxes: [],
+        projectile: {
+          speed: 0.5,
+          width: 0.4,
+          height: 0.2,
+          depth: 0.2,
+          damage: 45,
+          color: '#39FF14',
+          glowColor: '#39FF14',
+          lifespan: 150
+        }
+      },
+      {
+        id: 'special-slide',
+        name: 'Viper Slide',
+        input: '⬇️↘️➡️ + K',
+        inputSequence: ['D', 'DF', 'F', 'K'],
+        damage: 70,
+        meterGain: 60,
+        meterCost: 0,
+        cancelable: false,
+        invincible: false,
+        startup: 12,
+        active: 10,
+        recovery: 20,
+        onHit: 15,
+        onBlock: -10,
+        animationState: 'special-2',
+        type: 'special',
+        hitboxes: [
+          { frameStart: 12, frameEnd: 22, x: 0.6, y: 0.2, z: 0, width: 1.2, height: 0.4, depth: 0.5, type: 'attack', damage: 70, knockback: { x: 0.3, y: 0.2, z: 0 } }
+        ]
+      }
+    ]
   },
   {
     id: 'iron-claw',

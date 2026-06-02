@@ -16,7 +16,7 @@ export const CharacterSelect: React.FC = () => {
     
     setTimeout(() => {
       useGameStore.getState().setGameMode('arcade')
-      setScreen('battle')
+      setScreen('stage-select')
     }, 500)
   }
 

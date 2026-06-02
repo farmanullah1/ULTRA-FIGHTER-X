@@ -3,6 +3,7 @@ import { useGameStore } from '@stores/gameStore'
 import { GameCanvas } from '@components/game/GameCanvas'
 import { HUD } from '@components/layout/HUD'
 import { CharacterSelect } from '@components/menus/CharacterSelect'
+import { StageSelect } from '@components/menus/StageSelect'
 import { AnimatePresence, motion } from 'framer-motion'
 import './styles/globals.css'
 
@@ -38,6 +39,16 @@ function App() {
               className="w-full h-full"
             >
               <CharacterSelect />
+            </motion.div>
+          ) : screen === 'stage-select' ? (
+            <motion.div
+              key="stage-select"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="w-full h-full"
+            >
+              <StageSelect />
             </motion.div>
           ) : (
             <motion.div

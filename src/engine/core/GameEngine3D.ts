@@ -185,11 +185,18 @@ export class GameEngine3D {
     })
 
     if (this.battleState === 'starting') {
-      this.stateTimer--; if (this.stateTimer <= 0) { this.battleState = 'active'; useGameStore.getState().setBattleState('active'); }
+      this.stateTimer--
+      if (this.stateTimer <= 0) {
+        this.battleState = 'active'
+        useGameStore.getState().setBattleState('active')
+      }
     }
 
     if (this.battleState === 'active') {
-      if (frame % 60 === 0 && this.roundTime > 0) { this.roundTime--; useGameStore.getState().updateTimer(this.roundTime); }
+      if (frame % 60 === 0 && this.roundTime > 0) {
+        this.roundTime--
+        useGameStore.getState().updateTimer(this.roundTime)
+      }
     }
 
     const p1Input = this.input.getPlayer1Input()
@@ -212,15 +219,26 @@ export class GameEngine3D {
 
     if (this.battleState === 'active') {
       if (this.player1.isDead || this.player2.isDead || this.roundTime <= 0) {
-        this.battleState = 'ko'; this.stateTimer = 180; this.gameLoop.setTimeScale(0.2); useGameStore.getState().setBattleState('ko')
+        this.battleState = 'ko'
+        this.stateTimer = 180
+        this.gameLoop.setTimeScale(0.2)
+        useGameStore.getState().setBattleState('ko')
       }
     }
 
     if (this.battleState === 'ko') {
-      this.stateTimer--; if (this.stateTimer <= 0) {
-        this.battleState = 'round-end'; this.gameLoop.setTimeScale(1.0); useGameStore.getState().setBattleState('round-end');
+      this.stateTimer--
+      if (this.stateTimer <= 0) {
+        this.battleState = 'round-end'
+        this.gameLoop.setTimeScale(1.0)
+        useGameStore.getState().setBattleState('round-end')
+        const store = useGameStore.getState()
         const winner = this.player1.health > this.player2.health ? 'player1' : 'player2'
-        useGameStore.getState().recordRoundResult({ winner, timeLeft: this.roundTime, perfectRound: (winner === 'player1' ? this.player1.health : this.player2.health) === 1000 })
+        store.recordRoundResult({ winner, timeLeft: this.roundTime, perfectRound: (winner === 'player1' ? this.player1.health : this.player2.health) === 1000 })
+
+        if (store.roundsWon.player1 < 2 && store.roundsWon.player2 < 2) {
+          setTimeout(() => this.resetForNextRound(), 2000)
+        }
       }
     }
 
@@ -233,6 +251,23 @@ export class GameEngine3D {
     }
 
     this.updateCamera()
+  }
+
+  private resetForNextRound(): void {
+    if (!this.player1 || !this.player2) return
+    this.battleState = 'starting'
+    this.stateTimer = 180
+    this.roundTime = 99
+    this.player1.health = 1000
+    this.player2.health = 1000
+    this.player1.body.position.x = -3
+    this.player2.body.position.x = 3
+    this.player1.body.velocity.x = 0
+    this.player2.body.velocity.x = 0
+    this.player1.currentAnimation = 'idle'
+    this.player2.currentAnimation = 'idle'
+    useGameStore.getState().setBattleState('waiting')
+    setTimeout(() => useGameStore.getState().setBattleState('starting'), 10)
   }
 
   private getEmptyInput() {
@@ -250,7 +285,7 @@ export class GameEngine3D {
       const store = useGameStore.getState()
       store.incrementCombo(attacker === this.player1 ? 1 : 2)
       if (victim.isBlocking) { victim.receiveBlock(hit.damage, hit.blockstun); this.audio.playSFX('block'); }
-      else { victim.receiveHit(hit.damage, hit.hitstun, hit.knockback); this.particles.spawn('hit-spark', hitPos, attacker.def.colors.aura); this.audio.playSFX('hit'); }
+      else { victim.receiveHit(hit.damage, hit.hitstun, hit.knockback); this.particles.spawn('hit-spark', hitPos, attacker.def.colors.aura); this.audio.playSFX('hit'); this.shakeCamera(0.3, 10); }
       attacker.applyHitstop(6); victim.applyHitstop(6);
     }
   }
