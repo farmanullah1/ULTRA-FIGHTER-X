@@ -1,0 +1,134 @@
+@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Rajdhani:wght@400;500;600;700&family=Share+Tech+Mono&display=swap');
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --neon-cyan: #00FFFF;
+  --neon-magenta: #FF00FF;
+  --neon-yellow: #FFE600;
+  --neon-green: #39FF14;
+  --neon-red: #FF003C;
+  --dark-bg: #030308;
+  --panel-bg: rgba(8, 8, 18, 0.95);
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html, body {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: var(--dark-bg);
+  font-family: 'Rajdhani', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  user-select: none;
+}
+
+#root {
+  width: 100vw;
+  height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
+
+/* Scanline overlay on entire UI */
+#root::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(0, 0, 0, 0.03) 2px,
+    rgba(0, 0, 0, 0.03) 4px
+  );
+  pointer-events: none;
+  z-index: 9999;
+}
+
+canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+/* Neon text glow utility */
+.text-neon-cyan {
+  color: var(--neon-cyan);
+  text-shadow: 0 0 8px var(--neon-cyan), 0 0 20px var(--neon-cyan);
+}
+
+.text-neon-magenta {
+  color: var(--neon-magenta);
+  text-shadow: 0 0 8px var(--neon-magenta), 0 0 20px var(--neon-magenta);
+}
+
+.text-neon-red {
+  color: var(--neon-red);
+  text-shadow: 0 0 8px var(--neon-red), 0 0 20px var(--neon-red);
+}
+
+/* Cyberpunk panel */
+.cyber-panel {
+  background: var(--panel-bg);
+  border: 1px solid rgba(0, 255, 255, 0.2);
+  box-shadow: 
+    inset 0 1px 0 rgba(255, 255, 255, 0.05),
+    0 0 20px rgba(0, 255, 255, 0.05),
+    0 4px 32px rgba(0, 0, 0, 0.8);
+  backdrop-filter: blur(12px);
+}
+
+.cyber-panel::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, rgba(0,255,255,0.03) 0%, transparent 60%);
+  pointer-events: none;
+}
+
+/* Clip-path diagonal corners (cyberpunk bevel) */
+.clip-corner-tl {
+  clip-path: polygon(16px 0, 100% 0, 100% 100%, 0 100%, 0 16px);
+}
+
+.clip-corner-tr {
+  clip-path: polygon(0 0, calc(100% - 16px) 0, 100% 16px, 100% 100%, 0 100%);
+}
+
+.clip-corner-both {
+  clip-path: polygon(16px 0, calc(100% - 16px) 0, 100% 16px, 100% 100%, calc(100% - 16px) 100%, 16px 100%, 0 calc(100% - 16px), 0 16px);
+}
+
+/* Health bar glow */
+.health-bar-fill {
+  transition: width 0.1s ease-out;
+  position: relative;
+}
+
+.health-bar-fill::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(255,255,255,0.3) 0%, transparent 50%);
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--neon-cyan); border-radius: 2px; }
+
+/* Focus ring override */
+*:focus-visible {
+  outline: 2px solid var(--neon-cyan);
+  outline-offset: 2px;
+}

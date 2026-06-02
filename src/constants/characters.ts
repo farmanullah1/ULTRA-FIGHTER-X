@@ -1,0 +1,182 @@
+import type { CharacterDef } from '@types/character.types'
+
+export const CHARACTERS: CharacterDef[] = [
+  {
+    id: 'kai-storm',
+    name: 'Kai Storm',
+    title: 'The Storm Caller',
+    lore: 'A rogue cyber-ninja who harnesses the power of static electricity to strike with blinding speed.',
+    difficulty: 1,
+    archetype: 'rushdown',
+    modelPath: '/assets/models/kai_storm.glb',
+    stats: {
+      health: 1000,
+      walkSpeed: 0.15,
+      dashSpeed: 0.3,
+      jumpHeight: 0.4,
+      gravity: -0.015,
+      weight: 1,
+      meterMax: 1000,
+    },
+    colors: {
+      primary: '#00FFFF',
+      secondary: '#FFFFFF',
+      aura: '#00FFFF',
+      healthBarColor: '#00FFFF',
+      meterColor: '#00FFFF',
+    },
+    moves: [
+      {
+        id: 'punch-light',
+        name: 'Light Punch',
+        input: 'LP',
+        inputSequence: ['P'],
+        damage: 30,
+        meterGain: 10,
+        meterCost: 0,
+        cancelable: true,
+        invincible: false,
+        startup: 4,
+        active: 3,
+        recovery: 8,
+        onHit: 4,
+        onBlock: 0,
+        animationState: 'punch-light',
+        type: 'light-punch',
+        hitboxes: [
+          { frameStart: 4, frameEnd: 6, x: 0.5, y: 1.2, z: 0, width: 0.6, height: 0.4, depth: 0.4, type: 'attack', damage: 30 }
+        ]
+      }
+    ]
+  },
+  {
+    id: 'viper-x',
+    name: 'Viper X',
+    title: 'The Toxic Shadow',
+    lore: 'An assassin specializing in chemical warfare, using corrosive energy to dissolve any defense.',
+    difficulty: 2,
+    archetype: 'zoner',
+    modelPath: '/assets/models/viper_x.glb',
+    stats: {
+      health: 900,
+      walkSpeed: 0.12,
+      dashSpeed: 0.25,
+      jumpHeight: 0.35,
+      gravity: -0.015,
+      weight: 0.9,
+      meterMax: 1000,
+    },
+    colors: {
+      primary: '#39FF14',
+      secondary: '#000000',
+      aura: '#39FF14',
+      healthBarColor: '#39FF14',
+      meterColor: '#39FF14',
+    },
+    moves: []
+  },
+  {
+    id: 'iron-claw',
+    name: 'Iron Claw',
+    title: 'The Steel Titan',
+    lore: 'A former underground pit-fighter rebuilt with heavy industrial hydraulics for crushing power.',
+    difficulty: 3,
+    archetype: 'grappler',
+    modelPath: '/assets/models/iron_claw.glb',
+    stats: {
+      health: 1200,
+      walkSpeed: 0.08,
+      dashSpeed: 0.18,
+      jumpHeight: 0.3,
+      gravity: -0.018,
+      weight: 1.5,
+      meterMax: 1000,
+    },
+    colors: {
+      primary: '#FF6600',
+      secondary: '#444444',
+      aura: '#FF6600',
+      healthBarColor: '#FF6600',
+      meterColor: '#FF6600',
+    },
+    moves: []
+  },
+  {
+    id: 'nova-star',
+    name: 'Nova Star',
+    title: 'The Celestial Guard',
+    lore: 'An elite enforcer from the orbital colonies, wielding concentrated starlight and gravity tech.',
+    difficulty: 2,
+    archetype: 'balanced',
+    modelPath: '/assets/models/nova_star.glb',
+    stats: {
+      health: 1000,
+      walkSpeed: 0.13,
+      dashSpeed: 0.28,
+      jumpHeight: 0.38,
+      gravity: -0.015,
+      weight: 1.1,
+      meterMax: 1000,
+    },
+    colors: {
+      primary: '#FF00FF',
+      secondary: '#FFFFFF',
+      aura: '#FF00FF',
+      healthBarColor: '#FF00FF',
+      meterColor: '#FF00FF',
+    },
+    moves: []
+  },
+  {
+    id: 'shadow-byte',
+    name: 'Shadow Byte',
+    title: 'The Glitch Hunter',
+    lore: 'A digital consciousness inhabiting a physical shell, capable of flickering through reality.',
+    difficulty: 3,
+    archetype: 'tricky',
+    modelPath: '/assets/models/shadow_byte.glb',
+    stats: {
+      health: 850,
+      walkSpeed: 0.16,
+      dashSpeed: 0.35,
+      jumpHeight: 0.45,
+      gravity: -0.012,
+      weight: 0.8,
+      meterMax: 1000,
+    },
+    colors: {
+      primary: '#7700FF',
+      secondary: '#00FFFF',
+      aura: '#7700FF',
+      healthBarColor: '#7700FF',
+      meterColor: '#7700FF',
+    },
+    moves: []
+  },
+  {
+    id: 'phoenix-rise',
+    name: 'Phoenix Rise',
+    title: 'The Solar Flare',
+    lore: 'A pilot who survived a sun-diving mission, now radiating intense thermal energy.',
+    difficulty: 1,
+    archetype: 'powerhouse',
+    modelPath: '/assets/models/phoenix_rise.glb',
+    stats: {
+      health: 1100,
+      walkSpeed: 0.1,
+      dashSpeed: 0.22,
+      jumpHeight: 0.32,
+      gravity: -0.015,
+      weight: 1.3,
+      meterMax: 1000,
+    },
+    colors: {
+      primary: '#FF003C',
+      secondary: '#FFE600',
+      aura: '#FF003C',
+      healthBarColor: '#FF003C',
+      meterColor: '#FF003C',
+    },
+    moves: []
+  }
+]
