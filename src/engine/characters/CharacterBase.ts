@@ -4,6 +4,7 @@ import type { InputState } from '@game-types/input.types'
 import type { InputBuffer } from '@game-types/input.types'
 import { STARTING_HEALTH, MAX_METER } from '@constants/gameConstants'
 import { TransformNode, AbstractMesh, AnimationGroup, Color3 } from '@babylonjs/core'
+import { audioManager } from '@engine/audio/AudioManager'
 export class CharacterBase {
   id: string
   def: CharacterDef
@@ -31,6 +32,11 @@ export class CharacterBase {
   dashTimer: number = 0
   dashDirection: 'forward' | 'backward' | null = null
 
+  // Systemic combat scaling and states
+  juggleCount: number = 0
+  comboHitsReceived: number = 0
+  isEXActive: boolean = false
+
   // 3D Rendering Refs
   rootNode: TransformNode | null = null
   mesh: AbstractMesh | null = null
@@ -54,6 +60,8 @@ export class CharacterBase {
   hasLandedHit: boolean = false
   isInvincible: boolean = false
   isBlocking: boolean = false
+  isPoisoned: boolean = false
+  poisonTimer: number = 0
   
   // Hitstop
   hitstopTimer: number = 0
@@ -65,6 +73,7 @@ export class CharacterBase {
   // Callbacks
   onSpawnProjectile: ((config: any, pos: any, facingRight: boolean) => void) | null = null
   onSuperFlash: (() => void) | null = null
+  onSpawnParticles: ((type: string, pos: any, color?: string) => void) | null = null
 
   // Part mesh cache for procedural animations
   private partCache: Map<string, AbstractMesh | null> = new Map()
@@ -120,6 +129,17 @@ export class CharacterBase {
       this.overdriveTimer--
       if (this.overdriveTimer === 0) {
         this.isOverdriveActive = false
+      }
+    }
+
+    // Update poison state
+    if (this.isPoisoned && this.poisonTimer > 0) {
+      this.poisonTimer--
+      if (frame % 15 === 0) {
+        this.health = Math.max(1, this.health - 5)
+      }
+      if (this.poisonTimer === 0) {
+        this.isPoisoned = false
       }
     }
 
@@ -199,6 +219,8 @@ export class CharacterBase {
       if (this.hitstunTimer === 0) {
         this.isInHitstun = false
         this.currentAnimation = 'idle'
+        this.juggleCount = 0
+        this.comboHitsReceived = 0
       }
     }
     if (this.blockstunTimer > 0) {
@@ -279,6 +301,8 @@ export class CharacterBase {
       this.currentAnimation = 'knockdown'
       this.body.velocity.x = 0
       this.body.velocity.z = 0
+      this.juggleCount = 0
+      this.comboHitsReceived = 0
     }
     this.update3DNode(opponentPos)
     this.updateAnimation()
@@ -388,11 +412,11 @@ export class CharacterBase {
     // 5. Special Moves triggered via Special modifier button (L / input.super)
     if (input.super && this.body.isGrounded) {
       if (input.punch) {
-        this.triggerAttack('special-bolt', frame)
+        this.triggerAttack('special-bolt', frame, false)
         return
       }
       if (input.kick) {
-        this.triggerAttack('special-kick', frame)
+        this.triggerAttack('special-kick', frame, false)
         return
       }
       if (input.heavyPunch) {
@@ -401,6 +425,18 @@ export class CharacterBase {
           this.triggerAttack('super-storm', frame)
           return
         }
+      }
+    }
+
+    // 6. EX Special Moves triggered via EX modifier button (O / input.special)
+    if (input.special && this.body.isGrounded) {
+      if (input.punch) {
+        this.triggerAttack('special-bolt', frame, true)
+        return
+      }
+      if (input.kick) {
+        this.triggerAttack('special-kick', frame, true)
+        return
       }
     }
 
@@ -508,7 +544,7 @@ export class CharacterBase {
     return true
   }
 
-  triggerAttack(type: string, _frame: number): void {
+  triggerAttack(type: string, _frame: number, isEX: boolean = false): void {
     // If Overdrive is active, upgrade Iron Claw grabs
     let overrideType = type
     if (this.isOverdriveActive && this.id === 'iron-claw' && type === 'throw') {
@@ -554,33 +590,95 @@ export class CharacterBase {
         this.meter -= 50
       }
 
-      // Check Meter Cost
-      if (move.meterCost > 0 && this.meter < move.meterCost) return
+      // Check Meter Cost / EX Cost
+      let finalCost = move.meterCost
+      let isEXApplied = false
+      if (isEX && move.type === 'special') {
+        if (this.meter < 200) return
+        finalCost = 200
+        isEXApplied = true
+      } else {
+        if (move.meterCost > 0 && this.meter < move.meterCost) return
+      }
 
-      this.meter -= move.meterCost
-      this.currentMove = move
+      this.meter -= finalCost
+
+      if (isEXApplied) {
+        this.isEXActive = true
+        this.onSpawnParticles?.('hit-spark', this.body.position, '#FFAA00')
+        audioManager.playSFX('super_chime', 0.4)
+
+        // Upgrade special move stats for EX copy
+        const upgradedMove = { ...move }
+        upgradedMove.damage = Math.round(upgradedMove.damage * 1.3)
+        upgradedMove.hitboxes = upgradedMove.hitboxes.map(h => ({
+          ...h,
+          damage: h.damage !== undefined ? Math.round(h.damage * 1.3) : undefined,
+          width: h.width * 1.2,
+          height: h.height * 1.2
+        }))
+        upgradedMove.invincible = true // Grant full EX startup invincibility!
+        
+        if (upgradedMove.projectile) {
+          upgradedMove.projectile = {
+            ...upgradedMove.projectile,
+            damage: Math.round(upgradedMove.projectile.damage * 1.35),
+            speed: upgradedMove.projectile.speed * 1.25,
+            color: '#FFAA00',
+            glowColor: '#FFAA00'
+          }
+        }
+        this.currentMove = upgradedMove
+      } else {
+        this.currentMove = move
+      }
+
       this.moveFrame = 0
       this.hasLandedHit = false
-      this.currentAnimation = move.animationState
+      this.currentAnimation = this.currentMove.animationState
       
       // Signal Super Flash
-      if (move.type === 'super') {
+      if (this.currentMove.type === 'super') {
         this.onSuperFlash?.()
       }
     }
   }
 
   receiveHit(damage: number, hitstun: number, knockback: { x: number; y: number; z: number }): void {
-    this.health = Math.max(0, this.health - damage)
-    this.hitstunTimer = hitstun
-    this.initialHitstun = hitstun
+    // 1. Combo scaling: scale down damage as the combo grows to reward short bursts
+    this.comboHitsReceived++
+    const comboScale = Math.max(0.2, 1.05 - this.comboHitsReceived * 0.05)
+
+    let finalDamage = damage
+    let finalHitstun = hitstun
+    let finalKnockbackY = knockback.y
+
+    // 2. Air Juggle scaling: increase gravity scale and decay knockback on airborne opponents
+    if (this.body.isAirborne) {
+      this.juggleCount++
+      const juggleScale = Math.max(0.3, 1.0 - this.juggleCount * 0.12)
+      finalDamage = Math.round(damage * juggleScale * comboScale)
+
+      // Reduce launch height of subsequent air hits to prevent infinite height loops
+      finalKnockbackY = knockback.y * Math.max(0.25, 1.0 - this.juggleCount * 0.15)
+
+      // Decay hitstun
+      finalHitstun = Math.max(4, Math.round(hitstun * Math.max(0.3, 1.0 - this.juggleCount * 0.12)))
+    } else {
+      this.juggleCount = 0
+      finalDamage = Math.round(damage * comboScale)
+    }
+
+    this.health = Math.max(0, this.health - finalDamage)
+    this.hitstunTimer = finalHitstun
+    this.initialHitstun = finalHitstun
     this.isInHitstun = true
     this.currentMove = null
     this.isBlocking = false
     this.dashTimer = 0
     this.dashDirection = null
     this.body.velocity.x = knockback.x * (this.facingRight ? -1 : 1)
-    this.body.velocity.y = knockback.y
+    this.body.velocity.y = finalKnockbackY
     this.body.velocity.z = knockback.z
     this.currentAnimation = 'hit-stun'
     this.meter = Math.min(MAX_METER, this.meter + 40)
@@ -609,6 +707,11 @@ export class CharacterBase {
   updateAnimation(): void {
     if (this.currentMove) {
       this.moveFrame++
+
+      // Spawn golden EX particle trails
+      if (this.isEXActive && this.moveFrame % 3 === 0) {
+        this.onSpawnParticles?.('hit-spark', { ...this.body.position, y: this.body.position.y + 1.0 } as any, '#FFAA00')
+      }
       
       // Spawn projectile on first active frame
       if (this.moveFrame === this.currentMove.startup && this.currentMove.projectile) {
@@ -625,6 +728,7 @@ export class CharacterBase {
         this.currentMove = null
         this.moveFrame = 0
         this.currentAnimation = 'idle'
+        this.isEXActive = false
       }
     }
     

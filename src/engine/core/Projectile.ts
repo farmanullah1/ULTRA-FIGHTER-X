@@ -53,7 +53,7 @@ export class Projectile {
     this.light.range = 5
 
     // Spawn initial trail
-    particles.spawn('hit-spark', this.position, config.glowColor)
+    particles.spawn('hit-spark-medium', this.position, config.glowColor)
   }
 
   update(particles: ParticleSystemManager): void {
@@ -67,7 +67,7 @@ export class Projectile {
 
     // Spawn trail particles occasionally
     if (this.lifespan % 5 === 0) {
-      particles.spawn('dust', this.position, this.config.glowColor)
+      particles.spawn('hit-spark-light', this.position, this.config.glowColor)
     }
   }
 

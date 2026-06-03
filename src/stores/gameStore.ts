@@ -50,10 +50,26 @@ interface GameState {
   p2FrameAdvantage: number | null
   punishAlert: 'punishable' | 'punished' | null
   customBannerText: string | null
+  superFlash: boolean
+
+  // Player Status Effects
+  player1Status: {
+    isBlocking: boolean
+    isInHitstun: boolean
+    isOverdriveActive: boolean
+    isPoisoned: boolean
+  }
+  player2Status: {
+    isBlocking: boolean
+    isInHitstun: boolean
+    isOverdriveActive: boolean
+    isPoisoned: boolean
+  }
 
   // Actions
   setScreen: (screen: GameScreen) => void
   setBattleState: (state: 'waiting' | 'starting' | 'active' | 'ko' | 'round-end') => void
+  setSuperFlash: (flash: boolean) => void
   startNewMatch: () => void
   setGameMode: (mode: GameMode) => void
   selectCharacter: (player: 1 | 2, id: CharacterID) => void
@@ -74,6 +90,7 @@ interface GameState {
   setFrameAdvantage: (player: 1 | 2, adv: number | null) => void
   setPunishAlert: (alert: 'punishable' | 'punished' | null) => void
   setCustomBannerText: (text: string | null) => void
+  updatePlayerStatus: (player: 1 | 2, status: Partial<GameState['player1Status']>) => void
 }
 
 export const useGameStore = create<GameState>()(
@@ -114,6 +131,9 @@ export const useGameStore = create<GameState>()(
     p2FrameAdvantage: null,
     punishAlert: null,
     customBannerText: null,
+    superFlash: false,
+    player1Status: { isBlocking: false, isInHitstun: false, isOverdriveActive: false, isPoisoned: false },
+    player2Status: { isBlocking: false, isInHitstun: false, isOverdriveActive: false, isPoisoned: false },
  
     setScreen: (screen) => set(state => { state.screen = screen }),
     setBattleState: (battleState) => set(state => { state.battleState = battleState }),
@@ -129,6 +149,8 @@ export const useGameStore = create<GameState>()(
       state.p2FrameAdvantage = null
       state.punishAlert = null
       state.customBannerText = null
+      state.player1Status = { isBlocking: false, isInHitstun: false, isOverdriveActive: false, isPoisoned: false }
+      state.player2Status = { isBlocking: false, isInHitstun: false, isOverdriveActive: false, isPoisoned: false }
     }),
     setGameMode: (mode) => set(state => { state.gameMode = mode }),
     selectCharacter: (player, id) => set(state => {
@@ -187,6 +209,8 @@ export const useGameStore = create<GameState>()(
       state.p2FrameAdvantage = null
       state.punishAlert = null
       state.customBannerText = null
+      state.player1Status = { isBlocking: false, isInHitstun: false, isOverdriveActive: false, isPoisoned: false }
+      state.player2Status = { isBlocking: false, isInHitstun: false, isOverdriveActive: false, isPoisoned: false }
     }),
     setDummyMode: (mode) => set(state => { state.dummyMode = mode }),
     setTrainingRefill: (enabled) => set(state => { state.trainingRefill = enabled }),
@@ -195,6 +219,14 @@ export const useGameStore = create<GameState>()(
       else state.p2FrameAdvantage = adv
     }),
     setPunishAlert: (alert) => set(state => { state.punishAlert = alert }),
-    setCustomBannerText: (text) => set(state => { state.customBannerText = text })
+    setCustomBannerText: (text) => set(state => { state.customBannerText = text }),
+    setSuperFlash: (flash) => set(state => { state.superFlash = flash }),
+    updatePlayerStatus: (player, status) => set(state => {
+      if (player === 1) {
+        state.player1Status = { ...state.player1Status, ...status }
+      } else {
+        state.player2Status = { ...state.player2Status, ...status }
+      }
+    })
   }))
 )

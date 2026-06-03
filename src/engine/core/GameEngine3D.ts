@@ -18,6 +18,7 @@ import { audioManager } from '@engine/audio/AudioManager'
 import { Projectile } from './Projectile'
 import { STAGES } from '@constants/stages'
 import { CHARACTERS } from '@constants/characters'
+import { vfxBus } from '@components/layout/VFXOverlay'
 
 export type BattleState = 'waiting' | 'starting' | 'active' | 'ko' | 'round-end'
 
@@ -76,6 +77,15 @@ export class GameEngine3D {
   private lightningTimer: number = 0
   private lightningFlashDuration: number = 0
 
+  // Local combo timers to prevent Zustand store mutations
+  private p1ComboTimer: number = 0
+  private p2ComboTimer: number = 0
+
+  // Event listener refs for clean disposal
+  private resizeListener: () => void
+  private keydownListener: (e: KeyboardEvent) => void
+  private resizeObserverRef: ResizeObserver | null = null
+
   constructor(canvas: HTMLCanvasElement, inputManager: InputManager) {
     this.canvas = canvas
     this.input = inputManager
@@ -92,21 +102,24 @@ export class GameEngine3D {
     this.initScene()
     this.initPipeline()
 
-    window.addEventListener('resize', () => {
+    this.resizeListener = () => {
       this.engine.resize()
-    })
+    }
+    window.addEventListener('resize', this.resizeListener)
 
-    const resizeObserver = new ResizeObserver(() => {
+    this.resizeObserverRef = new ResizeObserver(() => {
       this.engine.resize()
-    })
-    resizeObserver.observe(canvas)
+    }
+    )
+    this.resizeObserverRef.observe(canvas)
 
-    window.addEventListener('keydown', (e) => {
+    this.keydownListener = (e: KeyboardEvent) => {
       if (e.code === 'Escape' && useGameStore.getState().screen === 'battle') {
         const current = useGameStore.getState().isPaused
         useGameStore.getState().setPaused(!current)
       }
-    })
+    }
+    window.addEventListener('keydown', this.keydownListener)
   }
 
   private initScene(): void {
@@ -141,6 +154,22 @@ export class GameEngine3D {
   }
 
   private initPipeline(): void {
+    // Dispose any stale pipelines from a previous instantiation first
+    if (this.defaultPipeline) {
+      this.defaultPipeline.dispose()
+      this.defaultPipeline = null
+    }
+    if (this.ssaoPipeline) {
+      if (this.isSSAOAttached && this.camera) {
+        try {
+          this.scene.postProcessRenderPipelineManager.detachCamerasFromRenderPipeline('ssao', this.camera!)
+        } catch (_) { /* safe to ignore */ }
+      }
+      this.ssaoPipeline.dispose()
+      this.ssaoPipeline = null
+      this.isSSAOAttached = false
+    }
+
     this.defaultPipeline = new DefaultRenderingPipeline('defaultPipeline', true, this.scene, [this.camera!])
     this.defaultPipeline.bloomEnabled = true
     this.defaultPipeline.bloomThreshold = 0.8
@@ -157,9 +186,14 @@ export class GameEngine3D {
     
     this.defaultPipeline.samples = 4
 
-    this.ssaoPipeline = new SSAO2RenderingPipeline('ssao', this.scene, 0.75, [])
-    this.ssaoPipeline.totalStrength = 1.0
-    this.ssaoPipeline.radius = 2
+    try {
+      this.ssaoPipeline = new SSAO2RenderingPipeline('ssao', this.scene, 0.75, [])
+      this.ssaoPipeline.totalStrength = 1.0
+      this.ssaoPipeline.radius = 2
+    } catch (e) {
+      console.warn('SSAO pipeline init failed:', e)
+      this.ssaoPipeline = null
+    }
     this.isSSAOAttached = false
 
     // Apply active quality state
@@ -206,15 +240,23 @@ export class GameEngine3D {
     this.defaultPipeline.depthOfFieldEnabled = quality === 'ultra'
 
     // 5. SSAO
-    if (this.ssaoPipeline) {
+    if (this.ssaoPipeline && this.camera) {
       if (quality === 'ultra') {
         if (!this.isSSAOAttached) {
-          this.scene.postProcessRenderPipelineManager.attachCamerasToRenderPipeline('ssao', this.camera!)
-          this.isSSAOAttached = true
+          try {
+            this.scene.postProcessRenderPipelineManager.attachCamerasToRenderPipeline('ssao', this.camera!)
+            this.isSSAOAttached = true
+          } catch (e) {
+            console.warn('SSAO attach failed:', e)
+          }
         }
       } else {
         if (this.isSSAOAttached) {
-          this.scene.postProcessRenderPipelineManager.detachCamerasFromRenderPipeline('ssao', this.camera!)
+          try {
+            this.scene.postProcessRenderPipelineManager.detachCamerasFromRenderPipeline('ssao', this.camera!)
+          } catch (e) {
+            console.warn('SSAO detach failed:', e)
+          }
           this.isSSAOAttached = false
         }
       }
@@ -232,9 +274,13 @@ export class GameEngine3D {
     this.player1 = new CharacterBase(p1Def, -2.2, true)
     this.player2 = new CharacterBase(p2Def, 2.2, false)
 
+    const store = useGameStore.getState()
+    const p1Color = store.player1ColorIndex
+    const p2Color = store.player2ColorIndex
+
     const [p1Assets, p2Assets] = await Promise.all([
-      this.assetManager.loadCharacterModel(p1Def.modelPath, p1Def),
-      this.assetManager.loadCharacterModel(p2Def.modelPath, p2Def)
+      this.assetManager.loadCharacterModel(p1Def.modelPath, p1Def, p1Color),
+      this.assetManager.loadCharacterModel(p2Def.modelPath, p2Def, p2Color)
     ])
 
     this.player1.rootNode = p1Assets.root
@@ -261,7 +307,8 @@ export class GameEngine3D {
   async changeCSSCharacter(player: 1 | 2, id: string): Promise<void> {
     if (!this.isCSSMode) return
     const pDef = CHARACTERS.find(c => c.id === id) || CHARACTERS[player === 1 ? 0 : 1]
-    const assets = await this.assetManager.loadCharacterModel(pDef.modelPath, pDef)
+    const colorIndex = player === 1 ? useGameStore.getState().player1ColorIndex : useGameStore.getState().player2ColorIndex
+    const assets = await this.assetManager.loadCharacterModel(pDef.modelPath, pDef, colorIndex)
 
     if (player === 1) {
       if (this.player1 && this.player1.rootNode) {
@@ -285,7 +332,7 @@ export class GameEngine3D {
 
     // Spawn visual splash
     const spawnPos = new Vector3(player === 1 ? -2.2 : 2.2, 1.2, 0)
-    this.particles.spawn('hit-spark', spawnPos, pDef.colors.primary)
+    this.particles.spawn('hit-spark-medium', spawnPos, pDef.colors.primary)
     this.audio.playSFX('menu_hover')
   }
 
@@ -343,9 +390,13 @@ export class GameEngine3D {
       }
     }
 
+    const store = useGameStore.getState()
+    const p1Color = store.player1ColorIndex
+    const p2Color = store.player2ColorIndex
+
     const [p1Assets, p2Assets] = await Promise.all([
-      this.assetManager.loadCharacterModel(p1Def.modelPath, p1Def),
-      this.assetManager.loadCharacterModel(p2Def.modelPath, p2Def)
+      this.assetManager.loadCharacterModel(p1Def.modelPath, p1Def, p1Color),
+      this.assetManager.loadCharacterModel(p2Def.modelPath, p2Def, p2Color)
     ])
 
     this.player1.rootNode = p1Assets.root
@@ -565,23 +616,37 @@ export class GameEngine3D {
     this.projectiles = this.projectiles.filter(p => {
       p.update(this.particles)
       const victim = p.ownerId === 'p1' ? this.player2! : this.player1!
-      const victimHurtbox = this.collision.getCharacterHurtbox(victim.body.position.x, victim.body.position.y, victim.body.position.z, victim.body.width, victim.body.height, victim.body.depth)
-      const projBox = { min: { x: p.position.x - p.config.width/2, y: p.position.y - p.config.height/2, z: p.position.z - p.config.depth/2 }, max: { x: p.position.x + p.config.width/2, y: p.position.y + p.config.height/2, z: p.position.z + p.config.depth/2 } }
 
-      if (this.collision.boxesOverlap(projBox, victimHurtbox)) {
-        if (victim.isBlocking) { 
-          victim.receiveBlock(p.config.damage * 0.1, 12)
-          this.audio.playSFX('block')
+      // Check if victim is currently invincible (e.g. knockdown getup, or during startup of an invincible move)
+      const isVictimInvincible = victim.isKnockedDown || 
+                                 victim.getupTimer > 0 || 
+                                 (victim.currentMove?.invincible && victim.moveFrame <= victim.currentMove.startup)
+
+      if (!isVictimInvincible) {
+        const victimHurtbox = this.collision.getCharacterHurtbox(victim.body.position.x, victim.body.position.y, victim.body.position.z, victim.body.width, victim.body.height, victim.body.depth)
+        const projBox = { min: { x: p.position.x - p.config.width/2, y: p.position.y - p.config.height/2, z: p.position.z - p.config.depth/2 }, max: { x: p.position.x + p.config.width/2, y: p.position.y + p.config.height/2, z: p.position.z + p.config.depth/2 } }
+
+        if (this.collision.boxesOverlap(projBox, victimHurtbox)) {
+          if (victim.isBlocking) { 
+            victim.receiveBlock(p.config.damage * 0.1, 12)
+            this.audio.playSFX('block')
+          }
+          else { 
+            victim.receiveHit(p.config.damage, 20, { x: 0.2, y: 0.1, z: 0 })
+            this.audio.playSFX('hit')
+            if ('vibrate' in navigator) navigator.vibrate(40)
+            
+            const attacker = p.ownerId === 'p1' ? this.player1! : this.player2!
+            if (attacker.id === 'viper-x') {
+              victim.isPoisoned = true
+              victim.poisonTimer = 240
+            }
+          }
+          this.particles.spawn('hit-spark-medium', p.position, p.config.glowColor)
+          this.shakeCamera(0.2, 10)
+          p.dispose()
+          return false
         }
-        else { 
-          victim.receiveHit(p.config.damage, 20, { x: 0.2, y: 0.1, z: 0 })
-          this.audio.playSFX('hit')
-          if ('vibrate' in navigator) navigator.vibrate(40)
-        }
-        this.particles.spawn('hit-spark', p.position, p.config.glowColor)
-        this.shakeCamera(0.2, 10)
-        p.dispose()
-        return false
       }
       if (p.isDead) { p.dispose(); return false; }
       return true
@@ -591,10 +656,14 @@ export class GameEngine3D {
       this.stateTimer--
       if (this.stateTimer === 120) {
         this.audio.playSFX('round_start')
+        const currentRound = useGameStore.getState().currentRound
+        const roundText = currentRound >= 3 ? "Final Round" : `Round ${currentRound === 1 ? 'One' : 'Two'}`
+        this.audio.announce(`${roundText}... Ready?`)
       }
       if (this.stateTimer <= 0) {
         this.battleState = 'active'
         useGameStore.getState().setBattleState('active')
+        this.audio.announce("Fight!")
       }
     }
 
@@ -653,20 +722,29 @@ export class GameEngine3D {
     // Spawn Overdrive aura particles
     if (frame % 5 === 0) {
       if (this.player1.isOverdriveActive) {
-        this.particles.spawn('hit-spark', this.player1.body.position as any, this.player1.def.colors.aura)
+        this.particles.spawn('character-aura', this.player1.body.position as any, this.player1.def.colors.aura)
       }
       if (this.player2.isOverdriveActive) {
-        this.particles.spawn('hit-spark', this.player2.body.position as any, this.player2.def.colors.aura)
+        this.particles.spawn('character-aura', this.player2.body.position as any, this.player2.def.colors.aura)
+      }
+    }
+    // Meter-full pulse aura (when meter >= 750 but not overdrive)
+    if (frame % 12 === 0) {
+      if (this.player1.meter >= 750 && !this.player1.isOverdriveActive) {
+        this.particles.spawn('character-aura', this.player1.body.position as any, this.player1.def.colors.aura)
+      }
+      if (this.player2.meter >= 750 && !this.player2.isOverdriveActive) {
+        this.particles.spawn('character-aura', this.player2.body.position as any, this.player2.def.colors.aura)
       }
     }
 
     // Trigger Quick Shift Cancel Visuals
     if (this.player1.justQuickShifted) {
-      this.particles.spawn('hit-spark', this.player1.body.position as any, '#FFFFFF')
+      this.particles.spawn('parry-flash', this.player1.body.position as any, '#FFFFFF')
       this.audio.playSFX('swing')
     }
     if (this.player2.justQuickShifted) {
-      this.particles.spawn('hit-spark', this.player2.body.position as any, '#FFFFFF')
+      this.particles.spawn('parry-flash', this.player2.body.position as any, '#FFFFFF')
       this.audio.playSFX('swing')
     }
 
@@ -718,7 +796,7 @@ export class GameEngine3D {
       this.player1.body.velocity.z = 0
       this.player1.body.hitWall = null
       this.audio.playSFX('super_impact')
-      this.particles.spawn('hit-spark', new Vector3(this.player1.body.position.x, this.player1.body.position.y + 1.2, this.player1.body.position.z), this.player1.def.colors.primary)
+      this.particles.spawn('hit-spark-heavy', new Vector3(this.player1.body.position.x, this.player1.body.position.y + 1.2, this.player1.body.position.z), this.player1.def.colors.primary)
       useGameStore.getState().setCustomBannerText("WALL SPLAT!")
       setTimeout(() => useGameStore.getState().setCustomBannerText(null), 1200)
     }
@@ -728,7 +806,7 @@ export class GameEngine3D {
       this.player2.body.velocity.z = 0
       this.player2.body.hitWall = null
       this.audio.playSFX('super_impact')
-      this.particles.spawn('hit-spark', new Vector3(this.player2.body.position.x, this.player2.body.position.y + 1.2, this.player2.body.position.z), this.player2.def.colors.primary)
+      this.particles.spawn('hit-spark-heavy', new Vector3(this.player2.body.position.x, this.player2.body.position.y + 1.2, this.player2.body.position.z), this.player2.def.colors.primary)
       useGameStore.getState().setCustomBannerText("WALL SPLAT!")
       setTimeout(() => useGameStore.getState().setCustomBannerText(null), 1200)
     }
@@ -750,6 +828,7 @@ export class GameEngine3D {
       
       useGameStore.getState().setCustomBannerText("RING OUT!")
       this.audio.playSFX('ko')
+      this.audio.announce("Ring Out!")
       this.shakeCamera(0.6, 25)
       this.player1.body.isFrozen = true
       this.player2.body.isFrozen = true
@@ -762,7 +841,17 @@ export class GameEngine3D {
         this.gameLoop.setTimeScale(0.18) // High quality slow motion
         useGameStore.getState().setBattleState('ko')
         this.audio.playSFX('ko')
+        this.audio.announce("K. O.!")
         this.shakeCamera(0.6, 25)
+        // Emit slow-mo VFX to React overlay
+        vfxBus.emit({ type: 'slow-mo' })
+        // KO explosion particles
+        const loserPos = this.player1.isDead ? this.player1.body.position : this.player2.body.position
+        const winnerPos = !this.player1.isDead ? this.player1.body.position : this.player2.body.position
+        const winnerColor = (!this.player1.isDead ? this.player1 : this.player2).def.colors.aura
+        this.particles.spawn('ko-explosion', loserPos as any, '#FF003C')
+        this.particles.spawn('super-explosion', winnerPos as any, winnerColor)
+        setTimeout(() => this.particles.spawn('victory-confetti', winnerPos as any, winnerColor), 500)
         
         if ('vibrate' in navigator) {
           navigator.vibrate([200, 100, 300])
@@ -778,13 +867,20 @@ export class GameEngine3D {
         useGameStore.getState().setBattleState('round-end')
         const store = useGameStore.getState()
         const winner = this.player1.health > this.player2.health ? 'player1' : 'player2'
-        store.recordRoundResult({ winner, timeLeft: this.roundTime, perfectRound: (winner === 'player1' ? this.player1.health : this.player2.health) === 1000 })
+        const isPerfect = (winner === 'player1' ? this.player1.health : this.player2.health) === 1000
+        store.recordRoundResult({ winner, timeLeft: this.roundTime, perfectRound: isPerfect })
+
+        const winnerText = winner === 'player1' ? 'Player One' : 'Player Two'
+        if (isPerfect) {
+          this.audio.announce(`Perfect! ${winnerText} wins!`)
+        } else {
+          this.audio.announce(`${winnerText} wins!`)
+        }
 
         if (storeState.gameMode === 'attract') {
           setTimeout(() => {
             if (useGameStore.getState().gameMode === 'attract') {
-              store.roundsWon.player1 = 0
-              store.roundsWon.player2 = 0
+              store.resetMatch()
             }
             this.resetForNextRound()
           }, 3000)
@@ -796,10 +892,23 @@ export class GameEngine3D {
 
     if (frame % 2 === 0) {
       const store = useGameStore.getState()
-      if (store.player1ComboTimer > 0) { store.player1ComboTimer--; if (store.player1ComboTimer <= 0) store.resetCombo(1); }
-      if (store.player2ComboTimer > 0) { store.player2ComboTimer--; if (store.player2ComboTimer <= 0) store.resetCombo(2); }
+      if (this.p1ComboTimer > 0) { this.p1ComboTimer--; if (this.p1ComboTimer <= 0) store.resetCombo(1); }
+      if (this.p2ComboTimer > 0) { this.p2ComboTimer--; if (this.p2ComboTimer <= 0) store.resetCombo(2); }
       store.updateHealth(1, this.player1.health); store.updateHealth(2, this.player2.health);
       store.updateMeter(1, this.player1.meter); store.updateMeter(2, this.player2.meter);
+      
+      store.updatePlayerStatus(1, {
+        isBlocking: this.player1.isBlocking || this.player1.isInBlockstun,
+        isInHitstun: this.player1.isInHitstun,
+        isOverdriveActive: this.player1.isOverdriveActive,
+        isPoisoned: this.player1.isPoisoned
+      });
+      store.updatePlayerStatus(2, {
+        isBlocking: this.player2.isBlocking || this.player2.isInBlockstun,
+        isInHitstun: this.player2.isInHitstun,
+        isOverdriveActive: this.player2.isOverdriveActive,
+        isPoisoned: this.player2.isPoisoned
+      });
     }
 
     // Random dummy unsafe move triggers in CPU training mode
@@ -871,7 +980,7 @@ export class GameEngine3D {
     
     // Play parry or throw break sound
     this.audio.playSFX('block')
-    this.particles.spawn('hit-spark', new Vector3((victim.body.position.x + attacker.body.position.x)/2, victim.body.position.y + 1.2, 0), '#FFFFFF')
+    this.particles.spawn('block-spark', new Vector3((victim.body.position.x + attacker.body.position.x)/2, victim.body.position.y + 1.2, 0), '#FFFFFF')
     
     useGameStore.getState().setCustomBannerText("THROW BREAK!")
     setTimeout(() => useGameStore.getState().setCustomBannerText(null), 1200)
@@ -1036,6 +1145,14 @@ export class GameEngine3D {
 
   private checkCollisions(attacker: CharacterBase, victim: CharacterBase): void {
     if (!attacker.currentMove || attacker.hasLandedHit) return
+
+    // Startup and knockdown invincibility checks
+    const isVictimInvincible = victim.isKnockedDown || 
+                               victim.getupTimer > 0 || 
+                               (victim.currentMove?.invincible && victim.moveFrame <= victim.currentMove.startup)
+
+    if (isVictimInvincible) return
+
     const victimHurtbox = this.collision.getCharacterHurtbox(victim.body.position.x, victim.body.position.y, victim.body.position.z, victim.body.width, victim.body.height, victim.body.depth)
     
     // Scale up depth if homing attack (heavy punches, heavy kicks, sweeps, spins)
@@ -1061,7 +1178,7 @@ export class GameEngine3D {
           victim.body.velocity.x = 0
           victim.body.velocity.z = 0
           
-          this.particles.spawn('hit-spark', victim.body.position as any, '#39FF14')
+          this.particles.spawn('parry-flash', victim.body.position as any, '#39FF14')
           this.audio.playSFX('swing')
           
           useGameStore.getState().setCustomBannerText("TELEPORT EVADE!")
@@ -1092,9 +1209,10 @@ export class GameEngine3D {
         attacker.body.velocity.z = 0
         
         this.audio.playSFX('menu_select')
+        vfxBus.emit({ type: 'parry' })
         
         const hitPos = new Vector3((attacker.body.position.x + victim.body.position.x) / 2, attacker.body.position.y + 1.5, (attacker.body.position.z + victim.body.position.z) / 2)
-        this.particles.spawn('hit-spark', hitPos, '#FFFF00')
+        this.particles.spawn('parry-flash', hitPos, '#FFFF00')
         
         useGameStore.getState().setCustomBannerText(isNovaParry ? "PARRY GUARD IMPACT!" : "GUARD IMPACT!")
         setTimeout(() => useGameStore.getState().setCustomBannerText(null), 1200)
@@ -1115,9 +1233,15 @@ export class GameEngine3D {
       const hitPos = new Vector3((attacker.body.position.x + victim.body.position.x) / 2, attacker.body.position.y + 1.5, (attacker.body.position.z + victim.body.position.z) / 2)
       const store = useGameStore.getState()
       store.incrementCombo(attacker === this.player1 ? 1 : 2)
+      if (attacker === this.player1) {
+        this.p1ComboTimer = 45
+      } else {
+        this.p2ComboTimer = 45
+      }
       
       const isHeavy = attacker.currentMove.id.includes('heavy') || attacker.currentMove.id === 'punch-uppercut' || attacker.currentMove.id === 'punch-hook'
       const isCounterHit = !victim.isBlocking && victim.currentMove !== null && victim.moveFrame <= (victim.currentMove.startup + victim.currentMove.active)
+      const isSuper = attacker.currentMove.type === 'super'
       
       if (victim.isBlocking) { 
         let blockstun = hit.blockstun
@@ -1129,8 +1253,9 @@ export class GameEngine3D {
 
         victim.receiveBlock(hit.damage, blockstun)
         this.audio.playSFX('block')
-        this.particles.spawn('dust', hitPos, '#AAAAAA')
+        this.particles.spawn('block-spark', hitPos, '#00FFFF')
         if ('vibrate' in navigator) navigator.vibrate(30)
+        vfxBus.emit({ type: 'hit-flash' })
         
         store.setFrameAdvantage(attacker === this.player1 ? 1 : 2, adv)
       }
@@ -1138,9 +1263,10 @@ export class GameEngine3D {
         let hitstun = hit.hitstun
         if (isCounterHit) {
           hitstun = Math.floor(hitstun * 1.5)
-          this.counterFlashTimer = 3 // flash screen white (3 frames)
+          this.counterFlashTimer = 3
           this.particles.spawn('sweat', hitPos, '#AADDFF')
-          this.audio.playSFX('menu_select', 1.2) // play counter chime
+          this.audio.playSFX('menu_select', 1.2)
+          vfxBus.emit({ type: 'counter-hit' })
           
           store.setCustomBannerText("COUNTER HIT!")
           setTimeout(() => {
@@ -1149,8 +1275,32 @@ export class GameEngine3D {
         }
 
         victim.receiveHit(hit.damage, hitstun, hit.knockback)
-        this.particles.spawn('hit-spark', hitPos, attacker.def.colors.aura)
-        this.particles.spawn('dust', hitPos, '#AAAAAA')
+        if (attacker.id === 'viper-x') {
+          victim.isPoisoned = true
+          victim.poisonTimer = 240
+        }
+        
+        if (isSuper) {
+          store.setSuperFlash(true)
+          setTimeout(() => { store.setSuperFlash(false) }, 350)
+          this.audio.playSFX('super_chime', 1.5)
+          vfxBus.emit({ type: 'heavy-flash' })
+          vfxBus.emit({ type: 'slow-mo' })
+        } else if (isHeavy) {
+          vfxBus.emit({ type: 'heavy-flash' })
+        } else {
+          vfxBus.emit({ type: 'hit-flash' })
+        }
+
+        // Tiered particle type based on hit weight
+        if (isSuper || attacker.isOverdriveActive) {
+          this.particles.spawn('super-explosion', hitPos, attacker.def.colors.aura)
+        } else if (isHeavy) {
+          this.particles.spawn('hit-spark-heavy', hitPos, attacker.def.colors.aura)
+        } else {
+          this.particles.spawn('hit-spark-medium', hitPos, attacker.def.colors.aura)
+        }
+        this.particles.spawn('dust-land', hitPos, '#888888')
         
         // Scale hit sound volumes
         const moveId = attacker.currentMove.id
@@ -1167,7 +1317,7 @@ export class GameEngine3D {
         store.setFrameAdvantage(attacker === this.player1 ? 1 : 2, adv)
       }
       
-      const hs = isHeavy ? 8 : 4
+      const hs = isSuper ? 18 : isHeavy ? 8 : 4
       attacker.applyHitstop(hs)
       victim.applyHitstop(hs)
     }
@@ -1233,6 +1383,38 @@ export class GameEngine3D {
     this.engine.stopRenderLoop() 
     this.audio.stopMusic()
     this.clearHitboxVisualization()
+
+    // Clean up event listeners
+    window.removeEventListener('resize', this.resizeListener)
+    window.removeEventListener('keydown', this.keydownListener)
+    if (this.resizeObserverRef) {
+      this.resizeObserverRef.disconnect()
+      this.resizeObserverRef = null
+    }
+
+    // Dispose of render pipelines to clean up all post-processes
+    if (this.ssaoPipeline) {
+      this.ssaoPipeline.dispose()
+      this.ssaoPipeline = null
+    }
+    if (this.defaultPipeline) {
+      this.defaultPipeline.dispose()
+      this.defaultPipeline = null
+    }
+
+    // Dispose of characters
+    if (this.player1 && this.player1.rootNode) {
+      this.player1.rootNode.dispose()
+      this.player1 = null
+    }
+    if (this.player2 && this.player2.rootNode) {
+      this.player2.rootNode.dispose()
+      this.player2 = null
+    }
+
+    // Dispose of scene and engine
+    this.scene.dispose()
+    this.engine.dispose()
   }
 
   private shatterBarrier(meshName: string, xPos: number): void {
@@ -1244,7 +1426,7 @@ export class GameEngine3D {
     const color = useGameStore.getState().currentStageId === 'volcano' ? '#FF6600' : '#00FFFF'
     for (let i = 0; i < 20; i++) {
       const spawnPos = new Vector3(xPos, 0.4 + Math.random() * 1.6, (Math.random() - 0.5) * 6.5)
-      this.particles.spawn('hit-spark', spawnPos, color)
+      this.particles.spawn('hit-spark-heavy', spawnPos, color)
     }
     this.shakeCamera(0.42, 20)
   }

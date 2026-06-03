@@ -13,6 +13,12 @@ export class AudioManager {
 
   constructor() {
     // AudioContext will be initialized on first user interaction to comply with browser policies
+    if (typeof window !== 'undefined' && window.speechSynthesis) {
+      window.speechSynthesis.onvoiceschanged = () => {
+        window.speechSynthesis.getVoices()
+      }
+      window.speechSynthesis.getVoices()
+    }
   }
 
   private initContext(): void {
@@ -815,6 +821,60 @@ export class AudioManager {
 
     noise.start(now)
     noise.stop(now + 0.4)
+  }
+
+  announce(text: string): void {
+    // Play synthesized background digital chime
+    this.playAnnouncerChime()
+
+    if (typeof window === 'undefined' || !window.speechSynthesis) return
+    
+    try {
+      window.speechSynthesis.cancel()
+      const utterance = new SpeechSynthesisUtterance(text)
+      const voices = window.speechSynthesis.getVoices()
+      const voice = voices.find(v => 
+        v.lang.startsWith('en') && 
+        (v.name.includes('Google US English') || v.name.includes('David') || v.name.includes('Zira') || v.name.includes('Male') || v.name.includes('Natural'))
+      ) || voices.find(v => v.lang.startsWith('en')) || voices[0]
+      
+      if (voice) {
+        utterance.voice = voice
+      }
+      utterance.pitch = 0.62 // Deep electronic pitch
+      utterance.rate = 1.05  // Fast, sharp arcade style
+      utterance.volume = 0.95
+      window.speechSynthesis.speak(utterance)
+    } catch (e) {
+      console.warn("Speech synthesis failed, falling back to standard SFX", e)
+    }
+  }
+
+  private playAnnouncerChime(): void {
+    this.resume()
+    if (!this.context || !this.sfxGain) return
+    const now = this.context.currentTime
+    
+    // Quick sine wave pitch drop for a robotic warning alert
+    const osc = this.context.createOscillator()
+    const gain = this.context.createGain()
+    osc.type = 'sawtooth'
+    osc.frequency.setValueAtTime(320, now)
+    osc.frequency.exponentialRampToValueAtTime(120, now + 0.35)
+    
+    const filter = this.context.createBiquadFilter()
+    filter.type = 'lowpass'
+    filter.frequency.value = 500
+    
+    gain.gain.setValueAtTime(0.2, now)
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.35)
+    
+    osc.connect(filter)
+    filter.connect(gain)
+    gain.connect(this.sfxGain)
+    
+    osc.start(now)
+    osc.stop(now + 0.36)
   }
 }
 

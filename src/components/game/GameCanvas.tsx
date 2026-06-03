@@ -12,6 +12,7 @@ export const GameCanvas: React.FC = () => {
   const { 
     screen, player1CharId, player2CharId, 
     player1HoveredCharId, player2HoveredCharId, 
+    player1ColorIndex, player2ColorIndex,
     currentStageId, matchId 
   } = useGameStore()
 
@@ -30,13 +31,13 @@ export const GameCanvas: React.FC = () => {
     if (screen === 'character-select' && engineRef.current) {
       engineRef.current.changeCSSCharacter(1, player1HoveredCharId)
     }
-  }, [player1HoveredCharId, screen])
+  }, [player1HoveredCharId, player1ColorIndex, screen])
 
   useEffect(() => {
     if (screen === 'character-select' && engineRef.current) {
       engineRef.current.changeCSSCharacter(2, player2HoveredCharId)
     }
-  }, [player2HoveredCharId, screen])
+  }, [player2HoveredCharId, player2ColorIndex, screen])
 
   useEffect(() => {
     if (!canvasRef.current) return
