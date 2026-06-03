@@ -12,6 +12,7 @@ export interface PhysicsBody {
   mass: number
   isFrozen: boolean  // hitstop
   hitWall?: 'x' | 'z' | null
+  gravityScaleOverride?: number
 }
 
 export class PhysicsEngine {
@@ -26,7 +27,10 @@ export class PhysicsEngine {
 
     // 1. Apply gravity with weight class gravity scaling
     if (!body.isGrounded) {
-      const gravityScale = body.mass > 1.2 ? 1.35 : (body.mass < 0.95 ? 0.8 : 1.0)
+      let gravityScale = body.mass > 1.2 ? 1.35 : (body.mass < 0.95 ? 0.8 : 1.0)
+      if (body.gravityScaleOverride !== undefined) {
+        gravityScale = body.gravityScaleOverride
+      }
       body.velocity.y = Math.max(body.velocity.y + GRAVITY * gravityScale, MAX_FALL_SPEED)
     }
 

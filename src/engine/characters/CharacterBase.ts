@@ -16,6 +16,10 @@ export class CharacterBase {
   // 3D Fighter additions
   sidestepTimer: number = 0
   sidestepDir: number = 0 // 1 for background (up), -1 for foreground (down)
+  isSidewalking: boolean = false
+  sidewalkDir: number = 0
+  isOverdriveActive: boolean = false
+  overdriveTimer: number = 0
   crouchDashTimer: number = 0
   isParrying: boolean = false
   parryTimer: number = 0
@@ -38,6 +42,7 @@ export class CharacterBase {
   // Combat state
   isInHitstun: boolean = false
   hitstunTimer: number = 0
+  initialHitstun: number = 0
   isInBlockstun: boolean = false
   blockstunTimer: number = 0
   isKnockedDown: boolean = false
@@ -108,6 +113,14 @@ export class CharacterBase {
     }
     this.body.isFrozen = false
 
+    // Update Overdrive Timers
+    if (this.overdriveTimer > 0) {
+      this.overdriveTimer--
+      if (this.overdriveTimer === 0) {
+        this.isOverdriveActive = false
+      }
+    }
+
     // Update 3D fighter timers & velocities
     if (this.sidestepTimer > 0) {
       this.sidestepTimer--
@@ -116,6 +129,20 @@ export class CharacterBase {
         this.body.velocity.z = 0
       }
     }
+
+    // Sidewalk Z-axis movement
+    if (this.isSidewalking && !this.currentMove) {
+      const dirKey = this.sidewalkDir === 1 ? 'left' : 'right'
+      if (!input[dirKey]) {
+        this.isSidewalking = false
+        this.sidewalkDir = 0
+        this.body.velocity.z = 0
+      } else {
+        this.body.velocity.z = this.sidewalkDir * 0.22
+        this.currentAnimation = 'walk-forward'
+      }
+    }
+
     if (this.crouchDashTimer > 0) {
       this.crouchDashTimer--
       this.body.velocity.x = (this.facingRight ? 1 : -1) * this.def.stats.walkSpeed * 2.2
@@ -213,6 +240,13 @@ export class CharacterBase {
                             this.crouchDashTimer > 0
     this.body.height = isCrouchedState ? 1.1 : 2.5
 
+    // Launcher float: reduce gravity if airborne in heavy hitstun (hitstun > 25)
+    if (this.isInHitstun && this.initialHitstun > 25 && this.body.isAirborne) {
+      this.body.gravityScaleOverride = 0.45
+    } else {
+      this.body.gravityScaleOverride = undefined
+    }
+
     physics.update(this.body)
     this.update3DNode(opponentPos)
     this.updateAnimation()
@@ -247,13 +281,22 @@ export class CharacterBase {
 
     if (this.currentMove) return
 
-    // 1. Throws (Light Punch + Light Kick: punch && kick)
+    // 0. Overdrive Activation (EX Modifier L + Power Attack M)
+    if (input.super && input.heavyPunch && this.meter >= 1000 && !this.isOverdriveActive) {
+      this.meter = 0
+      this.isOverdriveActive = true
+      this.overdriveTimer = 300 // 5 seconds
+      this.onSuperFlash?.()
+      return
+    }
+
+    // 1. Throws (Light Punch + Light Kick: punch && kick / B && N)
     if (input.punch && input.kick && this.body.isGrounded) {
       this.triggerAttack('throw', frame)
       return
     }
 
-    // 2. Parry / Guard Impact (Light Punch + Block: punch && block)
+    // 2. Parry / Guard Impact (Light Punch + Block: punch && block / B && K)
     if (input.punch && input.block && this.body.isGrounded) {
       this.isParrying = true
       this.parryTimer = 10
@@ -261,39 +304,65 @@ export class CharacterBase {
       return
     }
 
-    // 3. Sidestepping (Double Tap Up or Down)
+    // 3. Sidestepping and Sidewalking (left is A / Background, right is D / Foreground)
     if (this.body.isGrounded) {
-      if (this.checkDoubleTap(buffer, 'up')) {
+      if (this.checkDoubleTap(buffer, 'left')) {
+        this.isSidewalking = true
+        this.sidewalkDir = 1
+        return
+      }
+      if (this.checkDoubleTap(buffer, 'right')) {
+        this.isSidewalking = true
+        this.sidewalkDir = -1
+        return
+      }
+      
+      const lastIdx = buffer.frames.length - 1
+      const leftJustPressed = input.left && !buffer.frames[lastIdx - 1]?.state.left
+      const rightJustPressed = input.right && !buffer.frames[lastIdx - 1]?.state.right
+      
+      if (leftJustPressed) {
         this.sidestepTimer = 12
         this.sidestepDir = 1
         return
       }
-      if (this.checkDoubleTap(buffer, 'down')) {
+      if (rightJustPressed) {
         this.sidestepTimer = 12
         this.sidestepDir = -1
         return
       }
     }
 
-    // 4. Crouch Dash (F, D, DF sequence or crouch + dash)
-    if (this.body.isGrounded) {
-      const isFacingRight = this.facingRight
-      const forwardSeq = isFacingRight ? ['F', 'D', 'DF'] : ['B', 'D', 'DB']
-      const isCrouching = input.down || this.currentAnimation === 'crouch'
-      if ((isCrouching && input.dash) || inputManager.checkInputSequence(buffer, forwardSeq)) {
-        this.crouchDashTimer = 15
-        this.body.velocity.x = (isFacingRight ? 1 : -1) * walkSpeed * 2.2
-        this.currentAnimation = 'crouch'
+    // 4. Short Hop / Jump (Space / input.dash)
+    if (input.dash && this.body.isGrounded) {
+      physics.jump(this.body, jumpHeight * 0.7) // short hop
+      this.currentAnimation = 'jump'
+      return
+    }
+
+    // 5. Special Moves triggered via Special modifier button (L / input.super)
+    if (input.super && this.body.isGrounded) {
+      if (input.punch) {
+        this.triggerAttack('special-bolt', frame)
         return
+      }
+      if (input.kick) {
+        this.triggerAttack('special-kick', frame)
+        return
+      }
+      if (input.heavyPunch) {
+        // Super / Rage Art (cinematic supers)
+        if (this.meter >= 1000 || this.isOverdriveActive) {
+          this.triggerAttack('super-storm', frame)
+          return
+        }
       }
     }
 
-    // 5. Special Moves check (highest precedence after throws/parries/movement)
+    // Also support motion inputs sequences for backward compatibility
     const sortedMoves = [...this.def.moves].sort((a, b) => b.inputSequence.length - a.inputSequence.length)
-
     for (const move of sortedMoves) {
       if (move.inputSequence.length > 1) {
-        // Adjust sequence for facing direction (F/B flip)
         const adjustedSequence = move.inputSequence.map(token => {
           if (!this.facingRight) {
             if (token === 'F') return 'B'
@@ -311,44 +380,49 @@ export class CharacterBase {
       }
     }
 
-    // Basic movement
-    const moveDir = this.facingRight
-      ? (input.right ? 1 : input.left ? -1 : 0)
-      : (input.left ? 1 : input.right ? -1 : 0)
-
-    if (moveDir !== 0 && !this.currentMove) {
-      this.body.velocity.x = moveDir * walkSpeed
-      this.currentAnimation = moveDir > 0 ? 'walk-forward' : 'walk-backward'
-    }
-
-    // Jump / Hop
-    if (input.up && this.body.isGrounded) {
-      physics.jump(this.body, jumpHeight)
-      this.currentAnimation = 'jump'
-    }
-
-    // Crouch
-    if (input.down && this.body.isGrounded) {
+    // Basic movement (Up: Forward W, Down: Back S / Crouch)
+    if (input.up && !this.currentMove) {
+      this.body.velocity.x = (this.facingRight ? 1 : -1) * walkSpeed
+      this.currentAnimation = 'walk-forward'
+    } else if (input.down && !this.currentMove) {
+      // Crouch walk backward
+      this.body.velocity.x = (this.facingRight ? -1 : 1) * walkSpeed * 0.7
       this.currentAnimation = 'crouch'
     }
 
-    // Block
-    const isHoldingBack = this.facingRight ? input.left : input.right
-    this.isBlocking = isHoldingBack && this.body.isGrounded
-
     // Basic attacks
-    if (input.punch && !input.down) this.triggerAttack('punch-light', frame)
-    if (input.kick && !input.down) this.triggerAttack('kick-light', frame)
-    if (input.heavyPunch) this.triggerAttack('punch-heavy', frame)
-    if (input.heavyKick) this.triggerAttack('kick-heavy', frame)
+    if (input.punch) {
+      const isSidestepping = this.sidestepTimer > 0 || this.isSidewalking
+      const isCrouching = input.down || this.currentAnimation === 'crouch'
+      
+      if (isSidestepping) {
+        this.triggerAttack('punch-hook', frame)
+      } else if (isCrouching) {
+        this.triggerAttack('punch-uppercut', frame)
+      } else {
+        this.triggerAttack('punch-light', frame)
+      }
+    }
+    if (input.kick) {
+      this.triggerAttack('kick-light', frame)
+    }
+    if (input.heavyPunch) {
+      this.triggerAttack('punch-heavy', frame) // Consumes 50 meter inside triggerAttack
+    }
+    if (input.heavyKick) {
+      this.triggerAttack('kick-heavy', frame)
+    }
+
+    // Block
+    this.isBlocking = input.block && this.body.isGrounded
 
     // Idle fallback
-    if (!input.left && !input.right && !input.down && this.body.isGrounded && !this.currentMove) {
+    if (!input.up && !input.down && !input.left && !input.right && this.body.isGrounded && !this.currentMove && !this.isSidewalking) {
       this.currentAnimation = 'idle'
     }
   }
 
-  private checkDoubleTap(buffer: InputBuffer, direction: 'up' | 'down'): boolean {
+  private checkDoubleTap(buffer: InputBuffer, direction: 'up' | 'down' | 'left' | 'right'): boolean {
     const frames = buffer.frames
     if (frames.length < 5) return false
 
@@ -390,19 +464,51 @@ export class CharacterBase {
   }
 
   triggerAttack(type: string, _frame: number): void {
-    const move = type === 'throw'
+    // If Overdrive is active, upgrade Iron Claw grabs
+    let overrideType = type
+    if (this.isOverdriveActive && this.id === 'iron-claw' && type === 'throw') {
+      overrideType = 'throw-earth-crush'
+    }
+
+    const move = overrideType === 'throw'
       ? {
           id: 'throw', name: 'Standard Throw', input: 'LP+LK', inputSequence: [], damage: 120, meterGain: 20, meterCost: 0, cancelable: false, invincible: false, startup: 6, active: 4, recovery: 22, onHit: 0, onBlock: 0, animationState: 'punch-heavy', type: 'throw',
           hitboxes: [{ frameStart: 6, frameEnd: 10, x: 0.4, y: 1.0, z: 0, width: 0.8, height: 0.8, depth: 0.8, type: 'throw', damage: 120, knockback: { x: 0.4, y: 0.3, z: 0 } }]
         } as Move
-      : (type === 'kick-wakeup'
+      : (overrideType === 'throw-earth-crush'
         ? {
-            id: 'kick-wakeup', name: 'Wakeup Kick', input: 'K', inputSequence: [], damage: 45, meterGain: 15, meterCost: 0, cancelable: false, invincible: false, startup: 6, active: 4, recovery: 15, onHit: 12, onBlock: -4, animationState: 'kick-light', type: 'light-kick',
-            hitboxes: [{ frameStart: 6, frameEnd: 10, x: 0.5, y: 0.2, z: 0, width: 0.8, height: 0.3, depth: 0.6, type: 'attack', damage: 45, knockback: { x: 0.4, y: 0.1, z: 0 } }]
+            id: 'throw', name: 'Earth Crush', input: 'EX Grab', inputSequence: [], damage: 200, meterGain: 0, meterCost: 0, cancelable: false, invincible: true, startup: 8, active: 5, recovery: 24, onHit: 0, onBlock: 0, animationState: 'special-1', type: 'throw',
+            hitboxes: [{ frameStart: 8, frameEnd: 12, x: 0.5, y: 1.0, z: 0, width: 1.2, height: 1.2, depth: 1.2, type: 'throw', damage: 200, knockback: { x: 0.8, y: 0.4, z: 0 } }]
           } as Move
-        : this.def.moves.find(m => m.id === type))
+        : (overrideType === 'kick-wakeup'
+          ? {
+              id: 'kick-wakeup', name: 'Wakeup Kick', input: 'K', inputSequence: [], damage: 45, meterGain: 15, meterCost: 0, cancelable: false, invincible: false, startup: 6, active: 4, recovery: 15, onHit: 12, onBlock: -4, animationState: 'kick-light', type: 'light-kick',
+              hitboxes: [{ frameStart: 6, frameEnd: 10, x: 0.5, y: 0.2, z: 0, width: 0.8, height: 0.3, depth: 0.6, type: 'attack', damage: 45, knockback: { x: 0.4, y: 0.1, z: 0 } }]
+            } as Move
+          : (overrideType === 'punch-light'
+            ? {
+                id: 'punch-light', name: 'Jab', input: 'B', inputSequence: [], damage: 30, meterGain: 10, meterCost: 0, cancelable: true, invincible: false, startup: 4, active: 3, recovery: 3, onHit: 6, onBlock: 1, animationState: 'punch-light', type: 'light-punch',
+                hitboxes: [{ frameStart: 4, frameEnd: 7, x: 0.5, y: 1.3, z: 0, width: 0.6, height: 0.3, depth: 0.4, type: 'attack', damage: 30 }]
+              } as Move
+            : (overrideType === 'punch-hook'
+              ? {
+                  id: 'punch-hook', name: 'Hook', input: 'B', inputSequence: [], damage: 50, meterGain: 15, meterCost: 0, cancelable: true, invincible: false, startup: 6, active: 4, recovery: 6, onHit: 10, onBlock: -2, animationState: 'punch-heavy', type: 'heavy-punch',
+                  hitboxes: [{ frameStart: 6, frameEnd: 10, x: 0.6, y: 1.2, z: 0, width: 0.7, height: 0.4, depth: 0.5, type: 'attack', damage: 50, knockback: { x: 0.25, y: 0.05, z: 0.2 } }]
+                } as Move
+              : (overrideType === 'punch-uppercut'
+                ? {
+                    id: 'punch-uppercut', name: 'Uppercut', input: 'B', inputSequence: [], damage: 70, meterGain: 20, meterCost: 0, cancelable: false, invincible: false, startup: 8, active: 4, recovery: 6, onHit: 15, onBlock: -6, animationState: 'special-1', type: 'heavy-punch',
+                    hitboxes: [{ frameStart: 8, frameEnd: 12, x: 0.5, y: 0.8, z: 0, width: 0.8, height: 0.8, depth: 0.6, type: 'attack', damage: 70, knockback: { x: 0.2, y: 0.52, z: 0 } }]
+                  } as Move
+                : this.def.moves.find(m => m.id === overrideType))))))
 
     if (move && !this.currentMove) {
+      // Power Attack consumes 50 meter
+      if (overrideType === 'punch-heavy') {
+        if (this.meter < 50) return
+        this.meter -= 50
+      }
+
       // Check Meter Cost
       if (move.meterCost > 0 && this.meter < move.meterCost) return
 
@@ -422,6 +528,7 @@ export class CharacterBase {
   receiveHit(damage: number, hitstun: number, knockback: { x: number; y: number; z: number }): void {
     this.health = Math.max(0, this.health - damage)
     this.hitstunTimer = hitstun
+    this.initialHitstun = hitstun
     this.isInHitstun = true
     this.currentMove = null
     this.isBlocking = false
@@ -479,6 +586,14 @@ export class CharacterBase {
 
   private updateProceduralAnimation(): void {
     if (!this.rootNode) return
+
+    // Shimmer effect: pulse the scaling of the rootNode slightly if in Overdrive
+    if (this.isOverdriveActive) {
+      const pulse = 1.0 + Math.sin(this.animationTimer * 0.28) * 0.04
+      this.rootNode.scaling.set(pulse, pulse, pulse)
+    } else {
+      this.rootNode.scaling.set(1, 1, 1)
+    }
 
     // Get sub-meshes
     const body = this.getPart('body')
@@ -594,16 +709,30 @@ export class CharacterBase {
       backArm.rotation.z = this.facingRight ? -0.2 : 0.2
     } 
     else if (animState === 'punch-heavy') {
+      const isHook = this.currentMove?.id === 'punch-hook'
       const duration = this.currentMove ? (this.currentMove.startup + this.currentMove.active + this.currentMove.recovery) : 16
       const progress = this.moveFrame / duration
       const ext = Math.sin(progress * Math.PI)
 
-      body.rotation.y = (this.facingRight ? -0.3 : 0.3) * (1 - ext) + (this.facingRight ? 0.35 : -0.35) * ext
-      body.position.z = -0.15 * (1 - ext) + 0.3 * ext
+      if (isHook) {
+        // Hook: Rotate torso Y by 45 degrees (0.78 rad) and swing lead arm in arc
+        body.rotation.y = (this.facingRight ? 0.78 : -0.78) * ext
+        const leadArm = this.facingRight ? armR : armL
+        const backArm = this.facingRight ? armL : armR
+        
+        leadArm.rotation.x = -Math.PI / 2 * ext
+        leadArm.rotation.y = (this.facingRight ? -0.5 : 0.5) * ext
+        leadArm.position.z = 0.6 * ext
+        
+        backArm.rotation.z = this.facingRight ? -0.3 : 0.3
+      } else {
+        body.rotation.y = (this.facingRight ? -0.3 : 0.3) * (1 - ext) + (this.facingRight ? 0.35 : -0.35) * ext
+        body.position.z = -0.15 * (1 - ext) + 0.3 * ext
 
-      const leadArm = this.facingRight ? armR : armL
-      leadArm.rotation.x = -Math.PI / 1.7 * ext
-      leadArm.position.z = 0.65 * ext
+        const leadArm = this.facingRight ? armR : armL
+        leadArm.rotation.x = -Math.PI / 1.7 * ext
+        leadArm.position.z = 0.65 * ext
+      }
     } 
     else if (animState === 'kick-light') {
       const duration = this.currentMove ? (this.currentMove.startup + this.currentMove.active + this.currentMove.recovery) : 12
@@ -628,30 +757,59 @@ export class CharacterBase {
       leadLeg.position.y = 0.4 + 0.25 * ext
     } 
     else if (animState.startsWith('special-')) {
-      const progress = this.moveFrame / 24
+      const isUppercut = this.currentMove?.id === 'punch-uppercut'
+      const startup = this.currentMove?.startup || 8
+      const active = this.currentMove?.active || 4
+      const recovery = this.currentMove?.recovery || 6
+      const total = startup + active + recovery
+      const progress = this.moveFrame / total
       const ext = Math.sin(progress * Math.PI)
 
-      if (this.id === 'kai-storm') {
-        const arm = this.facingRight ? armR : armL
-        arm.rotation.x = -Math.PI / 2
-        arm.position.z = 0.5 * ext
-      } 
-      else if (this.id === 'viper-x') {
-        // Slide pose
-        body.position.y = defBodyY - 0.45
-        head.position.y = defHeadY - 0.45
-        legL.rotation.x = -0.75
-        legR.rotation.x = -0.75
-      } 
-      else if (this.id === 'iron-claw') {
-        // Open wide grab
-        armL.rotation.set(-0.25 * ext, 0.7 * ext, 0.45 * ext)
-        armR.rotation.set(-0.25 * ext, -0.7 * ext, -0.45 * ext)
-      } 
-      else if (this.id === 'phoenix-rise') {
-        body.rotation.x = 0.5 * ext
-        armL.rotation.x = 0.75 * ext
-        armR.rotation.x = 0.75 * ext
+      if (isUppercut) {
+        // Uppercut: squat down during startup, snap up during active, return during recovery
+        const leadArm = this.facingRight ? armR : armL
+        if (this.moveFrame <= startup) {
+          const factor = this.moveFrame / startup
+          body.position.y = defBodyY - 0.3 * factor
+          head.position.y = defHeadY - 0.3 * factor
+          legL.position.y = 0.4 - 0.1 * factor
+          legR.position.y = 0.4 - 0.1 * factor
+          leadArm.rotation.x = 0.4 * factor
+        } else if (this.moveFrame <= startup + active) {
+          const factor = (this.moveFrame - startup) / active
+          body.position.y = (defBodyY - 0.3) + (0.6 * factor) // rises to +0.3
+          head.position.y = (defHeadY - 0.3) + (0.6 * factor)
+          leadArm.rotation.x = -Math.PI * 0.9
+          leadArm.position.y = 1.5 + 0.4 * factor
+        } else {
+          const factor = (this.moveFrame - startup - active) / recovery
+          body.position.y = (defBodyY + 0.3) - (0.3 * factor)
+          head.position.y = (defHeadY + 0.3) - (0.3 * factor)
+          leadArm.rotation.x = (-Math.PI * 0.9) * (1 - factor)
+        }
+      } else {
+        if (this.id === 'kai-storm') {
+          const arm = this.facingRight ? armR : armL
+          arm.rotation.x = -Math.PI / 2
+          arm.position.z = 0.5 * ext
+        } 
+        else if (this.id === 'viper-x') {
+          // Slide pose
+          body.position.y = defBodyY - 0.45
+          head.position.y = defHeadY - 0.45
+          legL.rotation.x = -0.75
+          legR.rotation.x = -0.75
+        } 
+        else if (this.id === 'iron-claw') {
+          // Open wide grab
+          armL.rotation.set(-0.25 * ext, 0.7 * ext, 0.45 * ext)
+          armR.rotation.set(-0.25 * ext, -0.7 * ext, -0.45 * ext)
+        } 
+        else if (this.id === 'phoenix-rise') {
+          body.rotation.x = 0.5 * ext
+          armL.rotation.x = 0.75 * ext
+          armR.rotation.x = 0.75 * ext
+        }
       }
     } 
     else if (animState === 'super') {
@@ -666,10 +824,42 @@ export class CharacterBase {
       legR.rotation.x = 0.35 * ext
     } 
     else if (animState === 'hit-stun') {
-      body.rotation.x = -0.28
-      head.rotation.x = -0.38
-      armL.rotation.z = -0.55
-      armR.rotation.z = 0.55
+      const hitstun = this.initialHitstun
+      if (hitstun <= 15) {
+        // Light hit: Flinch arms inward
+        body.rotation.x = -0.1
+        head.rotation.x = -0.15
+        armL.rotation.z = -0.25
+        armR.rotation.z = 0.25
+        armL.rotation.x = 0.3
+        armR.rotation.x = 0.3
+      } else if (hitstun <= 25) {
+        // Medium hit: Snap head to the side, raise one foot
+        body.rotation.x = -0.2
+        body.rotation.y = this.facingRight ? -0.25 : 0.25
+        head.rotation.y = this.facingRight ? 0.35 : -0.35
+        head.rotation.z = -0.15
+        const leadLeg = this.facingRight ? legR : legL
+        leadLeg.position.y = 0.55
+        leadLeg.rotation.x = -0.35
+        armL.rotation.z = -0.4
+        armR.rotation.z = 0.4
+      } else {
+        // Heavy hit / Launcher: Arch the spine backward, tilt body
+        body.rotation.x = 0.45
+        head.rotation.x = 0.35
+        body.rotation.z = this.facingRight ? -0.15 : 0.15
+        armL.rotation.z = -1.1
+        armR.rotation.z = 1.1
+        
+        if (this.body.isAirborne) {
+          if (this.rootNode) {
+            this.rootNode.rotation.x = 0.35
+          }
+          legL.rotation.x = 0.4
+          legR.rotation.x = -0.15
+        }
+      }
     } 
     else if (animState === 'defeat') {
       // Slump on knees

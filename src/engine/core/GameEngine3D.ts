@@ -67,6 +67,7 @@ export class GameEngine3D {
 
   // 3D Fighter upgrades tracking
   private cpuRecoveryActive: boolean = false
+  private counterFlashTimer: number = 0
 
   constructor(canvas: HTMLCanvasElement, inputManager: InputManager) {
     this.canvas = canvas
@@ -317,6 +318,21 @@ export class GameEngine3D {
     this.audio.setVolume('sfx', sfxVol)
     this.audio.setVolume('music', this.battleState === 'ko' ? musicVol * 0.12 : musicVol) // Dramatically quiet music during KO
 
+    // Handle Counter-Hit White Flash
+    if (this.counterFlashTimer > 0) {
+      this.counterFlashTimer--
+      const hemi = this.scene.getLightByName('hemiLight')
+      if (hemi) {
+        hemi.intensity = 3.0
+      }
+      if (this.counterFlashTimer <= 0) {
+        const hemiRestored = this.scene.getLightByName('hemiLight')
+        if (hemiRestored) {
+          hemiRestored.intensity = 0.35
+        }
+      }
+    }
+
     this.input.update(frame)
 
     // Handle Super Flash
@@ -338,7 +354,12 @@ export class GameEngine3D {
       } else if (this.player1.currentMove.type === 'super') {
         this.audio.playSFX('super_activate')
       } else {
-        this.audio.playSFX('swing')
+        const moveId = this.player1.currentMove.id
+        let volumeScale = 1.0
+        if (moveId === 'punch-light') volumeScale = 0.5
+        else if (moveId === 'punch-hook') volumeScale = 1.0
+        else if (moveId === 'punch-uppercut') volumeScale = 1.4
+        this.audio.playSFX('swing', volumeScale)
       }
     }
     if (!this.player1.currentMove) {
@@ -352,7 +373,12 @@ export class GameEngine3D {
       } else if (this.player2.currentMove.type === 'super') {
         this.audio.playSFX('super_activate')
       } else {
-        this.audio.playSFX('swing')
+        const moveId = this.player2.currentMove.id
+        let volumeScale = 1.0
+        if (moveId === 'punch-light') volumeScale = 0.5
+        else if (moveId === 'punch-hook') volumeScale = 1.0
+        else if (moveId === 'punch-uppercut') volumeScale = 1.4
+        this.audio.playSFX('swing', volumeScale)
       }
     }
     if (!this.player2.currentMove) {
@@ -448,6 +474,16 @@ export class GameEngine3D {
     this.player1.update(effectiveP1Input, this.input.getP1Buffer(), frame, this.physics, this.input, this.player2.body.position)
     this.player2.update(effectiveP2Input, this.input.getP2Buffer(), frame, this.physics, this.input, this.player1.body.position)
 
+    // Spawn Overdrive aura particles
+    if (frame % 5 === 0) {
+      if (this.player1.isOverdriveActive) {
+        this.particles.spawn('hit-spark', this.player1.body.position as any, this.player1.def.colors.aura)
+      }
+      if (this.player2.isOverdriveActive) {
+        this.particles.spawn('hit-spark', this.player2.body.position as any, this.player2.def.colors.aura)
+      }
+    }
+
     // Trigger Quick Shift Cancel Visuals
     if (this.player1.justQuickShifted) {
       this.particles.spawn('hit-spark', this.player1.body.position as any, '#FFFFFF')
@@ -461,12 +497,22 @@ export class GameEngine3D {
     // Resolve Whiffs
     if (this.player1.currentMove && this.player1.moveFrame === this.player1.currentMove.startup + this.player1.currentMove.active) {
       if (!this.player1.hasLandedHit) {
-        this.audio.playSFX('swing')
+        const moveId = this.player1.currentMove.id
+        let volumeScale = 1.0
+        if (moveId === 'punch-light') volumeScale = 0.5
+        else if (moveId === 'punch-hook') volumeScale = 1.0
+        else if (moveId === 'punch-uppercut') volumeScale = 1.4
+        this.audio.playSFX('swing', volumeScale)
       }
     }
     if (this.player2.currentMove && this.player2.moveFrame === this.player2.currentMove.startup + this.player2.currentMove.active) {
       if (!this.player2.hasLandedHit) {
-        this.audio.playSFX('swing')
+        const moveId = this.player2.currentMove.id
+        let volumeScale = 1.0
+        if (moveId === 'punch-light') volumeScale = 0.5
+        else if (moveId === 'punch-hook') volumeScale = 1.0
+        else if (moveId === 'punch-uppercut') volumeScale = 1.4
+        this.audio.playSFX('swing', volumeScale)
       }
     }
 
@@ -825,13 +871,43 @@ export class GameEngine3D {
       return h
     })
 
+    // Viper X Teleport Evade: automatically teleport behind the opponent if sidestepping their attack in Overdrive
+    if (victim.isOverdriveActive && victim.id === 'viper-x' && (victim.sidestepTimer > 0 || victim.isSidewalking)) {
+      const activeHitbox = hitboxesToUse.find(h => attacker.moveFrame >= h.frameStart && attacker.moveFrame <= h.frameEnd)
+      if (activeHitbox) {
+        const distVal = Math.abs(attacker.body.position.x - victim.body.position.x)
+        if (distVal < 2.5) {
+          const teleportX = attacker.body.position.x + (attacker.facingRight ? -1.5 : 1.5)
+          victim.body.position.x = teleportX
+          victim.body.position.z = attacker.body.position.z
+          victim.sidestepTimer = 0
+          victim.isSidewalking = false
+          victim.body.velocity.x = 0
+          victim.body.velocity.z = 0
+          
+          this.particles.spawn('hit-spark', victim.body.position as any, '#39FF14')
+          this.audio.playSFX('swing')
+          
+          useGameStore.getState().setCustomBannerText("TELEPORT EVADE!")
+          setTimeout(() => useGameStore.getState().setCustomBannerText(null), 1200)
+          
+          attacker.hasLandedHit = true 
+          return
+        }
+      }
+    }
+
     const hit = this.collision.checkAttackHit(attacker.body.position.x, attacker.body.position.y, attacker.body.position.z, attacker.facingRight, hitboxesToUse, attacker.moveFrame, victimHurtbox, victim.isBlocking)
 
     if (hit) {
       attacker.hasLandedHit = true
       
-      // 1. Parry check
-      if (victim.isParrying) {
+      // 1. Parry / Guard Impact Check
+      const isNovaParry = victim.isOverdriveActive && victim.id === 'nova-star' && 
+                          victim.currentMove !== null && victim.moveFrame <= victim.currentMove.startup &&
+                          ['punch-light', 'punch-heavy', 'kick-light', 'kick-heavy', 'punch-hook', 'punch-uppercut'].includes(victim.currentMove.id)
+
+      if (victim.isParrying || isNovaParry) {
         attacker.isInHitstun = true
         attacker.hitstunTimer = 45
         attacker.currentMove = null
@@ -844,7 +920,7 @@ export class GameEngine3D {
         const hitPos = new Vector3((attacker.body.position.x + victim.body.position.x) / 2, attacker.body.position.y + 1.5, (attacker.body.position.z + victim.body.position.z) / 2)
         this.particles.spawn('hit-spark', hitPos, '#FFFF00')
         
-        useGameStore.getState().setCustomBannerText("GUARD IMPACT!")
+        useGameStore.getState().setCustomBannerText(isNovaParry ? "PARRY GUARD IMPACT!" : "GUARD IMPACT!")
         setTimeout(() => useGameStore.getState().setCustomBannerText(null), 1200)
         return
       }
@@ -864,20 +940,50 @@ export class GameEngine3D {
       const store = useGameStore.getState()
       store.incrementCombo(attacker === this.player1 ? 1 : 2)
       
-      const isHeavy = attacker.currentMove.id.includes('heavy')
+      const isHeavy = attacker.currentMove.id.includes('heavy') || attacker.currentMove.id === 'punch-uppercut' || attacker.currentMove.id === 'punch-hook'
+      const isCounterHit = !victim.isBlocking && victim.currentMove !== null && victim.moveFrame <= (victim.currentMove.startup + victim.currentMove.active)
       
       if (victim.isBlocking) { 
-        victim.receiveBlock(hit.damage, hit.blockstun)
+        let blockstun = hit.blockstun
+        let adv = attacker.currentMove.onBlock
+        if (attacker.isOverdriveActive && attacker.id === 'kai-storm') {
+          blockstun += 4
+          adv += 4
+        }
+
+        victim.receiveBlock(hit.damage, blockstun)
         this.audio.playSFX('block')
+        this.particles.spawn('dust', hitPos, '#AAAAAA')
         if ('vibrate' in navigator) navigator.vibrate(30)
         
-        const adv = attacker.currentMove.onBlock
         store.setFrameAdvantage(attacker === this.player1 ? 1 : 2, adv)
       }
       else { 
-        victim.receiveHit(hit.damage, hit.hitstun, hit.knockback)
+        let hitstun = hit.hitstun
+        if (isCounterHit) {
+          hitstun = Math.floor(hitstun * 1.5)
+          this.counterFlashTimer = 3 // flash screen white (3 frames)
+          this.particles.spawn('sweat', hitPos, '#AADDFF')
+          this.audio.playSFX('menu_select', 1.2) // play counter chime
+          
+          store.setCustomBannerText("COUNTER HIT!")
+          setTimeout(() => {
+            if (store.customBannerText === "COUNTER HIT!") store.setCustomBannerText(null)
+          }, 1000)
+        }
+
+        victim.receiveHit(hit.damage, hitstun, hit.knockback)
         this.particles.spawn('hit-spark', hitPos, attacker.def.colors.aura)
-        this.audio.playSFX(isHeavy ? 'super_impact' : 'hit')
+        this.particles.spawn('dust', hitPos, '#AAAAAA')
+        
+        // Scale hit sound volumes
+        const moveId = attacker.currentMove.id
+        let volumeScale = 1.0
+        if (moveId === 'punch-light') volumeScale = 0.6
+        else if (moveId === 'punch-hook') volumeScale = 1.1
+        else if (moveId === 'punch-uppercut') volumeScale = 1.6
+
+        this.audio.playSFX(isHeavy ? 'super_impact' : 'hit', volumeScale)
         this.shakeCamera(isHeavy ? 0.45 : 0.25, 12)
         if ('vibrate' in navigator) navigator.vibrate(isHeavy ? 75 : 40)
         
