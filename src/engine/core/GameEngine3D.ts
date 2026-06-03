@@ -48,6 +48,7 @@ export class GameEngine3D {
   private defaultPipeline: DefaultRenderingPipeline | null = null
   private ssaoPipeline: SSAO2RenderingPipeline | null = null
   private currentGraphicsQuality: 'low' | 'medium' | 'ultra' | null = null
+  private isSSAOAttached: boolean = false
 
   // Visual Hitbox Overlay maps
   private debugHitboxes: Map<string, AbstractMesh> = new Map()
@@ -156,9 +157,10 @@ export class GameEngine3D {
     
     this.defaultPipeline.samples = 4
 
-    this.ssaoPipeline = new SSAO2RenderingPipeline('ssao', this.scene, 0.75, [this.camera!])
+    this.ssaoPipeline = new SSAO2RenderingPipeline('ssao', this.scene, 0.75, [])
     this.ssaoPipeline.totalStrength = 1.0
     this.ssaoPipeline.radius = 2
+    this.isSSAOAttached = false
 
     // Apply active quality state
     const quality = useSettingsStore.getState().graphicsQuality
@@ -206,9 +208,15 @@ export class GameEngine3D {
     // 5. SSAO
     if (this.ssaoPipeline) {
       if (quality === 'ultra') {
-        this.scene.postProcessRenderPipelineManager.attachCamerasToRenderPipeline('ssao', this.camera!)
+        if (!this.isSSAOAttached) {
+          this.scene.postProcessRenderPipelineManager.attachCamerasToRenderPipeline('ssao', this.camera!)
+          this.isSSAOAttached = true
+        }
       } else {
-        this.scene.postProcessRenderPipelineManager.detachCamerasFromRenderPipeline('ssao', this.camera!)
+        if (this.isSSAOAttached) {
+          this.scene.postProcessRenderPipelineManager.detachCamerasFromRenderPipeline('ssao', this.camera!)
+          this.isSSAOAttached = false
+        }
       }
     }
   }
