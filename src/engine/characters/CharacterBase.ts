@@ -433,54 +433,60 @@ export class CharacterBase {
       return
     }
 
-    // 3. Sidestepping and Sidewalking (left is A / Background, right is D / Foreground)
+    // 3. Sidestepping (Block + Up/Down)
     if (this.body.isGrounded) {
-      if (this.checkDoubleTap(buffer, 'up')) {
-        this.dashTimer = 15
-        this.dashDirection = 'forward'
-        this.currentAnimation = 'dash-forward'
-        return
-      }
-      if (this.checkDoubleTap(buffer, 'down')) {
-        this.dashTimer = 15
-        this.dashDirection = 'backward'
-        this.currentAnimation = 'dash-backward'
-        return
-      }
-
-      if (this.checkDoubleTap(buffer, 'left')) {
-        this.isSidewalking = true
-        this.sidewalkDir = 1
-        return
-      }
-      if (this.checkDoubleTap(buffer, 'right')) {
-        this.isSidewalking = true
-        this.sidewalkDir = -1
-        return
-      }
-      
-      const lastIdx = buffer.frames.length - 1
-      const leftJustPressed = input.left && !buffer.frames[lastIdx - 1]?.state.left
-      const rightJustPressed = input.right && !buffer.frames[lastIdx - 1]?.state.right
-      
-      if (leftJustPressed) {
+      if (input.block && input.up) {
         this.sidestepTimer = 12
         this.sidestepDir = 1
         return
       }
-      if (rightJustPressed) {
+      if (input.block && input.down) {
         this.sidestepTimer = 12
         this.sidestepDir = -1
         return
       }
     }
 
-    // 4. Short Hop / Jump (Space / input.dash)
-    if (input.dash && this.body.isGrounded && this.preJumpTimer === 0) {
+    const forwardKey = this.facingRight ? 'right' : 'left'
+    const backwardKey = this.facingRight ? 'left' : 'right'
+
+    // 4. Jump (Up key or Space/Dash key in neutral)
+    const wantsToJump = input.up || (input.dash && !input[forwardKey] && !input[backwardKey])
+    if (wantsToJump && this.body.isGrounded && this.preJumpTimer === 0) {
       this.preJumpTimer = 3
-      this.preJumpVelocityY = jumpHeight * 0.7
+      this.preJumpVelocityY = jumpHeight * 0.85
       this.currentAnimation = 'crouch'
       return
+    }
+
+    // 5. Dash Forward / Backward
+    if (this.body.isGrounded) {
+      // Double tap dash
+      if (this.checkDoubleTap(buffer, forwardKey)) {
+        this.dashTimer = 15
+        this.dashDirection = 'forward'
+        this.currentAnimation = 'dash-forward'
+        return
+      }
+      if (this.checkDoubleTap(buffer, backwardKey)) {
+        this.dashTimer = 15
+        this.dashDirection = 'backward'
+        this.currentAnimation = 'dash-backward'
+        return
+      }
+      // Space + direction dash
+      if (input.dash && input[forwardKey]) {
+        this.dashTimer = 15
+        this.dashDirection = 'forward'
+        this.currentAnimation = 'dash-forward'
+        return
+      }
+      if (input.dash && input[backwardKey]) {
+        this.dashTimer = 15
+        this.dashDirection = 'backward'
+        this.currentAnimation = 'dash-backward'
+        return
+      }
     }
 
     // 5. Special Moves triggered via Special modifier button (L / input.super)
@@ -535,14 +541,23 @@ export class CharacterBase {
       }
     }
 
-    // Basic movement (Up: Forward W, Down: Back S / Crouch)
-    if (input.up && !this.currentMove) {
-      this.body.velocity.x = (this.facingRight ? 1 : -1) * walkSpeed
-      this.currentAnimation = 'walk-forward'
-    } else if (input.down && !this.currentMove) {
-      // Crouch walk backward
-      this.body.velocity.x = (this.facingRight ? -1 : 1) * walkSpeed * 0.7
-      this.currentAnimation = 'crouch'
+    // Basic movement (Standard WASD / D-Pad: Left/Right walks, Down crouches)
+    if (!this.currentMove) {
+      if (input.down) {
+        this.body.velocity.x = 0
+        this.currentAnimation = 'crouch'
+      } else if (input[forwardKey]) {
+        this.body.velocity.x = (this.facingRight ? 1 : -1) * walkSpeed
+        this.currentAnimation = 'walk-forward'
+      } else if (input[backwardKey]) {
+        this.body.velocity.x = (this.facingRight ? -1 : 1) * walkSpeed * 0.75
+        this.currentAnimation = 'walk-backward'
+        
+        // Auto block when retreating (Street Fighter style)
+        this.isBlocking = this.body.isGrounded
+      } else {
+        this.body.velocity.x = 0
+      }
     }
 
     // Basic attacks (Street Fighter style: air, crouch, and standing attack states)
@@ -900,6 +915,45 @@ export class CharacterBase {
     if (this.currentMove) {
       this.moveFrame++
 
+      // Apply forward step / lunge movement during attack startup/active frames (Street Fighter style)
+      if (this.body.isGrounded && this.moveFrame <= this.currentMove.startup + this.currentMove.active) {
+        const moveId = this.currentMove.id
+        let lungeSpeed = 0
+        
+        if (moveId === 'punch-light') {
+          lungeSpeed = this.def.stats.walkSpeed * 0.4 // Minor jab step
+        } else if (moveId === 'kick-light' || moveId === 'kick-crouch-light') {
+          lungeSpeed = this.def.stats.walkSpeed * 0.5
+        } else if (moveId === 'punch-hook') {
+          lungeSpeed = this.def.stats.walkSpeed * 0.8
+        } else if (moveId === 'punch-heavy') {
+          lungeSpeed = this.def.stats.walkSpeed * 1.15 // Solid heavy punch step
+        } else if (moveId === 'kick-heavy') {
+          lungeSpeed = this.def.stats.walkSpeed * 1.3 // Massive heavy kick step
+        } else if (moveId === 'kick-crouch-heavy') {
+          lungeSpeed = this.def.stats.walkSpeed * 1.5 // Deep sweep lunge
+        } else if (moveId === 'punch-uppercut') {
+          lungeSpeed = this.def.stats.walkSpeed * 0.6
+        } else if (moveId === 'throw') {
+          lungeSpeed = this.def.stats.walkSpeed * 0.8
+        } else if (moveId === 'special-kick') {
+          lungeSpeed = this.def.stats.walkSpeed * 2.5
+        } else if (moveId === 'special-slide') {
+          lungeSpeed = this.def.stats.walkSpeed * 3.0
+        }
+
+        if (lungeSpeed > 0) {
+          this.body.velocity.x = (this.facingRight ? 1 : -1) * lungeSpeed
+        }
+      } 
+      // Decay velocity back to 0 during recovery frames
+      else if (this.body.isGrounded && this.moveFrame > this.currentMove.startup + this.currentMove.active) {
+        this.body.velocity.x *= 0.75
+        if (Math.abs(this.body.velocity.x) < 0.01) {
+          this.body.velocity.x = 0
+        }
+      }
+
       // Spawn golden EX particle trails
       if (this.isEXActive && this.moveFrame % 3 === 0) {
         this.onSpawnParticles?.('hit-spark-medium', { ...this.body.position, y: this.body.position.y + 1.0 } as any, '#FFAA00')
@@ -942,6 +996,7 @@ export class CharacterBase {
         this.moveFrame = 0
         this.currentAnimation = 'idle'
         this.isEXActive = false
+        this.body.velocity.x = 0 // Fully reset velocity at the end of the move
       }
     }
     
