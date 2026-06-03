@@ -20,10 +20,17 @@ export const HealthBar: React.FC<HealthBarProps> = ({ player, health, maxHealth,
   const isP1 = player === 1
   const isLowHealth = percentage <= 30
 
+  const getHealthColor = () => {
+    if (percentage > 50) return color
+    if (percentage >= 25) return '#FFAA00' // Yellow/Orange
+    return '#FF003C' // Red
+  }
+  const activeColor = getHealthColor()
+
   // Dual gradient colors for modern premium feel
   const healthGradient = isP1
-    ? `linear-gradient(90deg, ${color} 0%, var(--neon-cyan) 100%)`
-    : `linear-gradient(-90deg, ${color} 0%, var(--neon-magenta) 100%)`
+    ? `linear-gradient(90deg, ${activeColor} 0%, var(--neon-cyan) 100%)`
+    : `linear-gradient(-90deg, ${activeColor} 0%, var(--neon-magenta) 100%)`
 
   return (
     <div className={cn(
@@ -86,7 +93,7 @@ export const HealthBar: React.FC<HealthBarProps> = ({ player, health, maxHealth,
           style={{ 
             background: healthGradient,
             [isP1 ? 'left' : 'right']: 0,
-            boxShadow: `inset 0 2px 4px rgba(255,255,255,0.4), 0 0 20px ${color}55`
+            boxShadow: `inset 0 2px 4px rgba(255,255,255,0.4), 0 0 20px ${activeColor}55`
           }}
         />
 

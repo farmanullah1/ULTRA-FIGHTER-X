@@ -10,7 +10,6 @@ export const CharacterSelect: React.FC = () => {
   const [hoveredChar, setHoveredChar] = useState<CharacterDef>(CHARACTERS[0])
   
   const handleSelect = (id: CharacterID) => {
-    audioManager.playSFX('menu_select')
     selectCharacter(1, id)
     
     // Random select P2
@@ -18,12 +17,18 @@ export const CharacterSelect: React.FC = () => {
     const randomP2 = otherChars[Math.floor(Math.random() * otherChars.length)].id
     selectCharacter(2, randomP2)
     
+    // Trigger confirm animations in WebGL
+    if ((window as any).confirmCSSSelection) {
+      (window as any).confirmCSSSelection(1)
+      ;(window as any).confirmCSSSelection(2)
+    }
+    
     setTimeout(() => {
       if (!gameMode || gameMode === 'attract') {
         useGameStore.getState().setGameMode('arcade')
       }
       setScreen('stage-select')
-    }, 600)
+    }, 1200) // 1.2 seconds for confirmation victory poses to play
   }
 
   const handleReturn = () => {
@@ -58,6 +63,11 @@ export const CharacterSelect: React.FC = () => {
                 whileTap={{ scale: 0.96 }}
                 onMouseEnter={() => {
                   setHoveredChar(char)
+                  useGameStore.getState().setPlayer1HoveredCharId(char.id)
+                  // Select a random CPU opponent for P2 preview
+                  const otherChars = CHARACTERS.filter(c => c.id !== char.id)
+                  const randomP2 = otherChars[Math.floor(Math.random() * otherChars.length)].id
+                  useGameStore.getState().setPlayer2HoveredCharId(randomP2)
                   audioManager.playSFX('menu_hover')
                 }}
                 onClick={() => handleSelect(char.id)}

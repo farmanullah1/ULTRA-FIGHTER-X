@@ -12,6 +12,8 @@ interface GameState {
   player2CharId: CharacterID | null
   player1ColorIndex: number
   player2ColorIndex: number
+  player1HoveredCharId: CharacterID
+  player2HoveredCharId: CharacterID
   
   // Match state
   currentRound: number
@@ -55,6 +57,8 @@ interface GameState {
   startNewMatch: () => void
   setGameMode: (mode: GameMode) => void
   selectCharacter: (player: 1 | 2, id: CharacterID) => void
+  setPlayer1HoveredCharId: (id: CharacterID) => void
+  setPlayer2HoveredCharId: (id: CharacterID) => void
   selectColor: (player: 1 | 2, index: number) => void
   selectStage: (stageId: string) => void
   updateHealth: (player: 1 | 2, hp: number) => void
@@ -78,6 +82,8 @@ export const useGameStore = create<GameState>()(
     gameMode: null,
     player1CharId: null,
     player2CharId: null,
+    player1HoveredCharId: 'kai-storm',
+    player2HoveredCharId: 'viper-x',
     player1ColorIndex: 0,
     player2ColorIndex: 0,
     currentRound: 1,
@@ -108,7 +114,7 @@ export const useGameStore = create<GameState>()(
     p2FrameAdvantage: null,
     punishAlert: null,
     customBannerText: null,
-
+ 
     setScreen: (screen) => set(state => { state.screen = screen }),
     setBattleState: (battleState) => set(state => { state.battleState = battleState }),
     startNewMatch: () => set(state => {
@@ -129,6 +135,8 @@ export const useGameStore = create<GameState>()(
       if (player === 1) state.player1CharId = id
       else state.player2CharId = id
     }),
+    setPlayer1HoveredCharId: (id) => set(state => { state.player1HoveredCharId = id }),
+    setPlayer2HoveredCharId: (id) => set(state => { state.player2HoveredCharId = id }),
     selectColor: (player, index) => set(state => {
       if (player === 1) state.player1ColorIndex = index
       else state.player2ColorIndex = index

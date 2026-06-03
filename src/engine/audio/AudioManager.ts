@@ -65,6 +65,14 @@ export class AudioManager {
       this.playMenuHoverSound(volumeScale)
     } else if (name === 'menu_select') {
       this.playMenuSelectSound(volumeScale)
+    } else if (name === 'voice_grunt') {
+      this.playVoiceGrunt(volumeScale)
+    } else if (name === 'voice_shout') {
+      this.playVoiceShout(volumeScale)
+    } else if (name === 'super_chime') {
+      this.playSuperActivateChime(volumeScale)
+    } else if (name === 'barrier_shatter') {
+      this.playBarrierShatterSound(volumeScale)
     } else {
       this.playSwingSound(volumeScale)
     }
@@ -686,6 +694,124 @@ export class AudioManager {
     const source = this.context!.createBufferSource()
     source.buffer = buffer
     return source
+  }
+
+  private playVoiceGrunt(scale: number): void {
+    if (!this.context || !this.sfxGain) return
+    const now = this.context.currentTime
+    const osc = this.context.createOscillator()
+    const gain = this.context.createGain()
+    osc.type = 'triangle'
+    osc.frequency.setValueAtTime(140, now)
+    osc.frequency.exponentialRampToValueAtTime(75, now + 0.12)
+    
+    gain.gain.setValueAtTime(0.35 * scale, now)
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.12)
+    
+    const filter = this.context.createBiquadFilter()
+    filter.type = 'lowpass'
+    filter.frequency.value = 350
+    
+    osc.connect(filter)
+    filter.connect(gain)
+    gain.connect(this.sfxGain)
+    osc.start(now)
+    osc.stop(now + 0.13)
+  }
+
+  private playVoiceShout(scale: number): void {
+    if (!this.context || !this.sfxGain) return
+    const now = this.context.currentTime
+    const osc = this.context.createOscillator()
+    const gain = this.context.createGain()
+    osc.type = 'sawtooth'
+    osc.frequency.setValueAtTime(160, now)
+    osc.frequency.linearRampToValueAtTime(110, now + 0.25)
+    
+    gain.gain.setValueAtTime(0.4 * scale, now)
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.25)
+    
+    const filter = this.context.createBiquadFilter()
+    filter.type = 'bandpass'
+    filter.frequency.setValueAtTime(600, now)
+    filter.frequency.linearRampToValueAtTime(300, now + 0.25)
+    filter.Q.value = 2.0
+    
+    osc.connect(filter)
+    filter.connect(gain)
+    gain.connect(this.sfxGain)
+    osc.start(now)
+    osc.stop(now + 0.26)
+  }
+
+  private playSuperActivateChime(scale: number): void {
+    if (!this.context || !this.sfxGain) return
+    const now = this.context.currentTime
+    const notes = [659.25, 783.99, 987.77, 1318.51] // E5, G5, B5, E6
+    notes.forEach((freq, idx) => {
+      const osc = this.context!.createOscillator()
+      const gain = this.context!.createGain()
+      osc.type = 'sine'
+      osc.frequency.setValueAtTime(freq, now + idx * 0.06)
+      
+      gain.gain.setValueAtTime(0.18 * scale, now + idx * 0.06)
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.25 + idx * 0.06)
+      
+      osc.connect(gain)
+      gain.connect(this.sfxGain!)
+      osc.start(now + idx * 0.06)
+      osc.stop(now + 0.3 + idx * 0.06)
+    })
+  }
+
+  private playBarrierShatterSound(scale: number): void {
+    if (!this.context || !this.sfxGain) return
+    const now = this.context.currentTime
+
+    const osc1 = this.context.createOscillator()
+    const osc2 = this.context.createOscillator()
+    const gain = this.context.createGain()
+    osc1.type = 'triangle'
+    osc1.frequency.setValueAtTime(1800, now)
+    osc1.frequency.exponentialRampToValueAtTime(300, now + 0.35)
+
+    osc2.type = 'sawtooth'
+    osc2.frequency.setValueAtTime(2200, now)
+    osc2.frequency.exponentialRampToValueAtTime(600, now + 0.25)
+
+    gain.gain.setValueAtTime(0.4 * scale, now)
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.35)
+
+    const filter1 = this.context.createBiquadFilter()
+    filter1.type = 'highpass'
+    filter1.frequency.value = 1000
+
+    osc1.connect(filter1)
+    osc2.connect(filter1)
+    filter1.connect(gain)
+    gain.connect(this.sfxGain)
+
+    osc1.start(now)
+    osc1.stop(now + 0.4)
+    osc2.start(now)
+    osc2.stop(now + 0.3)
+
+    const noise = this.createNoiseBurst(0.3)
+    const filter2 = this.context.createBiquadFilter()
+    filter2.type = 'bandpass'
+    filter2.frequency.value = 1500
+    filter2.Q.value = 2.0
+
+    const noiseGain = this.context.createGain()
+    noiseGain.gain.setValueAtTime(0.5 * scale, now)
+    noiseGain.gain.exponentialRampToValueAtTime(0.001, now + 0.35)
+
+    noise.connect(filter2)
+    filter2.connect(noiseGain)
+    noiseGain.connect(this.sfxGain)
+
+    noise.start(now)
+    noise.stop(now + 0.4)
   }
 }
 

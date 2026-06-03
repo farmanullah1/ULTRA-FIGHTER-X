@@ -48,6 +48,23 @@ export const HUD: React.FC = () => {
 
   return (
     <div className="absolute inset-0 pointer-events-none p-4 md:p-6 flex flex-col items-center select-none justify-between h-full">
+      {/* KO Vignette overlay */}
+      <AnimatePresence>
+        {battleState === 'ko' && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.5 }}
+            className="fixed inset-0 pointer-events-none z-0"
+            style={{
+              background: 'radial-gradient(circle, rgba(0,0,0,0) 30%, rgba(255,0,0,0.45) 85%, rgba(0,0,0,0.85) 100%)',
+              mixBlendMode: 'multiply'
+            }}
+          />
+        )}
+      </AnimatePresence>
+
       {/* Cinematic Phase Banner Overlay */}
       <div className="absolute inset-0 flex items-center justify-center overflow-hidden z-20">
         <AnimatePresence>
@@ -211,13 +228,23 @@ export const HUD: React.FC = () => {
       <div className="flex justify-between w-full max-w-6xl mt-4 md:mt-8 px-4 md:px-8 z-10 pointer-events-none">
         {/* P1 Combo & Frame Data */}
         <div className="flex flex-col gap-3">
-          <AnimatePresence>
+          <AnimatePresence mode="popLayout">
             {player1Combo > 1 && (
               <motion.div
-                initial={{ x: -150, opacity: 0, scale: 0.8 }}
-                animate={{ x: 0, opacity: 1, scale: 1.1 }}
-                exit={{ x: -100, opacity: 0, scale: 0.8 }}
-                className="flex flex-col items-start -skew-x-12"
+                key={player1Combo}
+                initial={{ scale: 0.5, rotate: -15, opacity: 0 }}
+                animate={{ 
+                  scale: [0.5, 1.45, 1.1], 
+                  rotate: [-15, 12, -8],
+                  opacity: 1 
+                }}
+                exit={{ scale: 0.8, opacity: 0 }}
+                transition={{ 
+                  type: 'spring', 
+                  stiffness: 450, 
+                  damping: 14 
+                }}
+                className="flex flex-col items-start -skew-x-12 origin-left"
               >
                 <span className="text-5xl md:text-7xl font-display font-black text-neon-cyan italic drop-shadow-glow">
                   {player1Combo}
@@ -245,13 +272,23 @@ export const HUD: React.FC = () => {
 
         {/* P2 Combo & Frame Data */}
         <div className="flex flex-col gap-3 items-end">
-          <AnimatePresence>
+          <AnimatePresence mode="popLayout">
             {player2Combo > 1 && (
               <motion.div
-                initial={{ x: 150, opacity: 0, scale: 0.8 }}
-                animate={{ x: 0, opacity: 1, scale: 1.1 }}
-                exit={{ x: 100, opacity: 0, scale: 0.8 }}
-                className="flex flex-col items-end skew-x-12"
+                key={player2Combo}
+                initial={{ scale: 0.5, rotate: 15, opacity: 0 }}
+                animate={{ 
+                  scale: [0.5, 1.45, 1.1], 
+                  rotate: [15, -12, 8],
+                  opacity: 1 
+                }}
+                exit={{ scale: 0.8, opacity: 0 }}
+                transition={{ 
+                  type: 'spring', 
+                  stiffness: 450, 
+                  damping: 14 
+                }}
+                className="flex flex-col items-end skew-x-12 origin-right"
               >
                 <span className="text-5xl md:text-7xl font-display font-black text-neon-magenta italic drop-shadow-glow">
                   {player2Combo}

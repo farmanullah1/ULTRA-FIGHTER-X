@@ -3,7 +3,7 @@ import type { CharacterDef, AnimationState, Move } from '@game-types/character.t
 import type { InputState } from '@game-types/input.types'
 import type { InputBuffer } from '@game-types/input.types'
 import { STARTING_HEALTH, MAX_METER } from '@constants/gameConstants'
-import { TransformNode, AbstractMesh, AnimationGroup } from '@babylonjs/core'
+import { TransformNode, AbstractMesh, AnimationGroup, Color3 } from '@babylonjs/core'
 export class CharacterBase {
   id: string
   def: CharacterDef
@@ -28,6 +28,8 @@ export class CharacterBase {
   throwBreakPressed: boolean = false
   justQuickShifted: boolean = false
   quickShiftVFXTimer: number = 0
+  dashTimer: number = 0
+  dashDirection: 'forward' | 'backward' | null = null
 
   // 3D Rendering Refs
   rootNode: TransformNode | null = null
@@ -130,6 +132,20 @@ export class CharacterBase {
       }
     }
 
+    // Update Dash timers & velocities
+    if (this.dashTimer > 0) {
+      this.dashTimer--
+      const speed = this.def.stats.dashSpeed
+      const directionMult = this.dashDirection === 'forward' ? 1 : -1
+      this.body.velocity.x = (this.facingRight ? 1 : -1) * speed * directionMult
+      this.currentAnimation = this.dashDirection === 'forward' ? 'dash-forward' : 'dash-backward'
+      if (this.dashTimer === 0) {
+        this.body.velocity.x = 0
+        this.dashDirection = null
+        this.currentAnimation = 'idle'
+      }
+    }
+
     // Sidewalk Z-axis movement
     if (this.isSidewalking && !this.currentMove) {
       const dirKey = this.sidewalkDir === 1 ? 'left' : 'right'
@@ -194,7 +210,11 @@ export class CharacterBase {
     }
     if (this.getupTimer > 0) {
       this.getupTimer--
-      if (this.getupTimer === 0) {
+      if (this.getupTimer > 30) {
+        this.currentAnimation = 'knockdown'
+      } else if (this.getupTimer > 0) {
+        this.currentAnimation = 'getup'
+      } else {
         this.isKnockedDown = false
         this.currentAnimation = 'idle'
       }
@@ -230,7 +250,7 @@ export class CharacterBase {
       }
     }
 
-    if (!isStunned && !this.isKnockedDown) {
+    if (!isStunned && !this.isKnockedDown && this.dashTimer === 0) {
       this.processInput(input, inputBuffer, frame, physics, inputManager)
     }
     
@@ -248,6 +268,18 @@ export class CharacterBase {
     }
 
     physics.update(this.body)
+
+    // Knockdown landing check
+    const landed = this.body.isGrounded && !this.body.isAirborne && (this.body.velocity.y <= 0) && (this.isInHitstun && this.initialHitstun > 25)
+    if (landed) {
+      this.isInHitstun = false
+      this.hitstunTimer = 0
+      this.isKnockedDown = true
+      this.getupTimer = 45 // stays flat for 15 frames, then interpolates getup for 30 frames
+      this.currentAnimation = 'knockdown'
+      this.body.velocity.x = 0
+      this.body.velocity.z = 0
+    }
     this.update3DNode(opponentPos)
     this.updateAnimation()
   }
@@ -306,6 +338,19 @@ export class CharacterBase {
 
     // 3. Sidestepping and Sidewalking (left is A / Background, right is D / Foreground)
     if (this.body.isGrounded) {
+      if (this.checkDoubleTap(buffer, 'up')) {
+        this.dashTimer = 15
+        this.dashDirection = 'forward'
+        this.currentAnimation = 'dash-forward'
+        return
+      }
+      if (this.checkDoubleTap(buffer, 'down')) {
+        this.dashTimer = 15
+        this.dashDirection = 'backward'
+        this.currentAnimation = 'dash-backward'
+        return
+      }
+
       if (this.checkDoubleTap(buffer, 'left')) {
         this.isSidewalking = true
         this.sidewalkDir = 1
@@ -532,6 +577,8 @@ export class CharacterBase {
     this.isInHitstun = true
     this.currentMove = null
     this.isBlocking = false
+    this.dashTimer = 0
+    this.dashDirection = null
     this.body.velocity.x = knockback.x * (this.facingRight ? -1 : 1)
     this.body.velocity.y = knockback.y
     this.body.velocity.z = knockback.z
@@ -550,6 +597,8 @@ export class CharacterBase {
     this.blockstunTimer = blockstun
     this.isInBlockstun = true
     this.currentAnimation = 'block'
+    this.dashTimer = 0
+    this.dashDirection = null
     this.meter = Math.min(MAX_METER, this.meter + 10)
   }
 
@@ -557,7 +606,7 @@ export class CharacterBase {
     this.hitstopTimer = frames
   }
 
-  private updateAnimation(): void {
+  updateAnimation(): void {
     if (this.currentMove) {
       this.moveFrame++
       
@@ -869,6 +918,102 @@ export class CharacterBase {
       armR.rotation.z = 0.1
       legL.rotation.x = -0.55
       legR.rotation.x = -0.55
+    }
+    else if (animState === 'victory') {
+      // Raised arms and puffed chest
+      body.position.y = defBodyY + 0.1
+      head.rotation.x = -0.18
+      armL.rotation.set(-0.3, 0.4, -2.1)
+      armR.rotation.set(-0.3, -0.4, 2.1)
+      legL.rotation.x = -0.1
+      legR.rotation.x = -0.1
+    }
+    else if (animState === 'dash-forward') {
+      // Torso leans forward, knees bend, arms in
+      body.position.y = defBodyY - 0.1
+      body.rotation.z = this.facingRight ? 0.35 : -0.35
+      legL.rotation.x = 0.22
+      legR.rotation.x = 0.22
+      armL.rotation.z = -0.3
+      armR.rotation.z = 0.3
+    }
+    else if (animState === 'dash-backward') {
+      // Torso leans backward, knees bend, arms in
+      body.position.y = defBodyY - 0.08
+      body.rotation.z = this.facingRight ? -0.25 : 0.25
+      legL.rotation.x = 0.16
+      legR.rotation.x = 0.16
+      armL.rotation.z = -0.35
+      armR.rotation.z = 0.35
+    }
+    else if (animState === 'knockdown') {
+      // Lie flat on back
+      body.rotation.z = this.facingRight ? -Math.PI / 2 : Math.PI / 2
+      body.position.y = 0.25
+      head.position.y = 0.25
+      legL.position.y = 0.25
+      legR.position.y = 0.25
+      armL.position.y = 0.25
+      armR.position.y = 0.25
+    }
+    else if (animState === 'getup') {
+      // Smoothly stand up
+      const progress = (30 - this.getupTimer) / 30
+      body.rotation.z = (this.facingRight ? -Math.PI / 2 : Math.PI / 2) * (1 - progress)
+      body.position.y = 0.25 * (1 - progress) + defBodyY * progress
+      head.position.y = 0.25 * (1 - progress) + defHeadY * progress
+      legL.position.y = 0.25 * (1 - progress) + 0.4 * progress
+      legR.position.y = 0.25 * (1 - progress) + 0.4 * progress
+      armL.position.y = 0.25 * (1 - progress) + 1.5 * progress
+      armR.position.y = 0.25 * (1 - progress) + 1.5 * progress
+    }
+    else if (animState === 'special-2' && this.id !== 'viper-x' && this.id !== 'kai-storm') {
+      // Dodge Roll: Spin 360 around horizontal-facing axis (Z-axis rotation) and dip height
+      const duration = this.currentMove ? (this.currentMove.startup + this.currentMove.active + this.currentMove.recovery) : 20
+      const progress = this.moveFrame / duration
+      const rollAngle = progress * Math.PI * 2
+      body.rotation.z = this.facingRight ? -rollAngle : rollAngle
+      body.position.y = defBodyY - 0.5 * Math.sin(progress * Math.PI)
+    }
+
+    // Update dynamic PBR materials: Damage Hit Flash, Overdrive Glowing Auras, Rim Lighting
+    if (this.rootNode) {
+      const meshes = this.rootNode.getChildMeshes(false)
+      meshes.forEach(mesh => {
+        const mat = mesh.material as any
+        if (mat) {
+          const isGlowMesh = mesh.name === 'visor' || mesh.name === 'katana1' || mesh.name === 'katana2' || 
+                             mesh.name === 'tube' || mesh.name === 'canister' || mesh.name === 'halo' || 
+                             mesh.name === 'orbL' || mesh.name === 'orbR' || mesh.name === 'star' || 
+                             mesh.name === 'shard1' || mesh.name === 'shard2' || mesh.name === 'hornL' || 
+                             mesh.name === 'hornR' || mesh.name === 'wingL' || mesh.name === 'wingR'
+
+          if (this.isInHitstun) {
+            // Emissive damage white flash
+            mat.emissiveColor = new Color3(1, 1, 1)
+            mat.emissiveIntensity = 3.0
+          } else if (this.isOverdriveActive || this.meter >= 1000) {
+            // Overdrive pulsing glow
+            const auraColor = Color3.FromHexString(this.def.colors.aura)
+            if (isGlowMesh) {
+              mat.emissiveColor = auraColor
+              mat.emissiveIntensity = 3.5 + Math.sin(this.animationTimer * 0.15) * 1.0
+            } else {
+              mat.emissiveColor = auraColor
+              mat.emissiveIntensity = 0.5 + Math.sin(this.animationTimer * 0.1) * 0.3
+            }
+          } else {
+            // Default clean high-graphics properties
+            if (isGlowMesh) {
+              mat.emissiveColor = Color3.FromHexString(this.def.colors.aura)
+              mat.emissiveIntensity = 2.5
+            } else {
+              mat.emissiveColor = new Color3(0, 0, 0)
+              mat.emissiveIntensity = 0
+            }
+          }
+        }
+      })
     }
   }
 

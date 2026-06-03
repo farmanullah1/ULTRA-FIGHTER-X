@@ -9,7 +9,34 @@ export const GameCanvas: React.FC = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const engineRef = useRef<GameEngine3D | null>(null)
   const { controls } = useSettingsStore()
-  const { player1CharId, player2CharId, currentStageId, matchId } = useGameStore()
+  const { 
+    screen, player1CharId, player2CharId, 
+    player1HoveredCharId, player2HoveredCharId, 
+    currentStageId, matchId 
+  } = useGameStore()
+
+  useEffect(() => {
+    (window as any).confirmCSSSelection = (player: 1 | 2) => {
+      if (engineRef.current) {
+        engineRef.current.confirmCSSSelection(player)
+      }
+    }
+    return () => {
+      delete (window as any).confirmCSSSelection
+    }
+  }, [])
+
+  useEffect(() => {
+    if (screen === 'character-select' && engineRef.current) {
+      engineRef.current.changeCSSCharacter(1, player1HoveredCharId)
+    }
+  }, [player1HoveredCharId, screen])
+
+  useEffect(() => {
+    if (screen === 'character-select' && engineRef.current) {
+      engineRef.current.changeCSSCharacter(2, player2HoveredCharId)
+    }
+  }, [player2HoveredCharId, screen])
 
   useEffect(() => {
     if (!canvasRef.current) return
@@ -19,7 +46,7 @@ export const GameCanvas: React.FC = () => {
     engineRef.current = engine
     
     // Attract mode if characters are not chosen yet
-    const isAttract = !player1CharId || !player2CharId
+    const isAttract = (!player1CharId || !player2CharId) && screen !== 'character-select'
     let p1Def = CHARACTERS.find(c => c.id === player1CharId)
     let p2Def = CHARACTERS.find(c => c.id === player2CharId)
     let stage = currentStageId
@@ -40,14 +67,19 @@ export const GameCanvas: React.FC = () => {
       useGameStore.getState().setGameMode('attract')
     }
 
-    engine.setupBattle(p1Def!, p2Def!, stage)
+    if (screen === 'character-select') {
+      engine.setupCharacterSelect(player1HoveredCharId, player2HoveredCharId)
+    } else {
+      engine.setupBattle(p1Def || CHARACTERS[0], p2Def || CHARACTERS[1], stage)
+    }
+    
     engine.start()
 
     return () => {
       engine.stop()
       inputManager.unbind()
     }
-  }, [controls, player1CharId, player2CharId, currentStageId, matchId])
+  }, [controls, player1CharId, player2CharId, currentStageId, matchId, screen])
 
   return (
     <div className="relative w-full h-full bg-black">

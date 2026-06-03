@@ -284,6 +284,56 @@ export class AssetManager {
     grid.position.y = 0.01
     grid.material = gridMat
 
+    // 2b. Left & Right Breakable Neon Barriers
+    const boundsX = theme === 'volcano' ? 14.0 : theme === 'cyber-city' ? 16.0 : theme === 'space-station' ? 12.0 : 11.5
+    const hasBarriers = theme === 'cyber-city' || theme === 'volcano'
+    if (hasBarriers) {
+      const barrierMat = new PBRMaterial('barrierMat', this.scene)
+      barrierMat.albedoColor = theme === 'volcano' ? new Color3(1, 0.25, 0) : new Color3(0, 0.8, 1)
+      barrierMat.emissiveColor = theme === 'volcano' ? new Color3(0.8, 0.1, 0) : new Color3(0, 0.6, 0.9)
+      barrierMat.emissiveIntensity = 2.5
+      barrierMat.metallic = 0.9
+      barrierMat.roughness = 0.1
+
+      const barrierL = MeshBuilder.CreateBox('barrierL', { width: 0.3, height: 2.2, depth: 8 }, this.scene)
+      barrierL.position.set(-boundsX, 1.1, 0)
+      barrierL.material = barrierMat
+
+      const barrierR = MeshBuilder.CreateBox('barrierR', { width: 0.3, height: 2.2, depth: 8 }, this.scene)
+      barrierR.position.set(boundsX, 1.1, 0)
+      barrierR.material = barrierMat
+    }
+
+    // 2c. Cheering Animated Crowd in Background
+    if (theme === 'cyber-city' || theme === 'neon-dojo') {
+      const crowdColor = theme === 'cyber-city' ? '#00FFFF' : '#FF00FF'
+      const crowdMat = new PBRMaterial('crowdMat', this.scene)
+      crowdMat.albedoColor = Color3.FromHexString(crowdColor)
+      crowdMat.emissiveColor = Color3.FromHexString(crowdColor)
+      crowdMat.emissiveIntensity = 1.2
+      crowdMat.metallic = 0.6
+      crowdMat.roughness = 0.4
+
+      const spectators: AbstractMesh[] = []
+      for (let i = 0; i < 12; i++) {
+        const xPos = -18 + i * 3.3 + (Math.random() - 0.5) * 0.4
+        const zPos = 13 + (Math.random() - 0.5) * 1.5
+        const spectator = MeshBuilder.CreateCylinder(`spectator_${i}`, { height: 1.2, diameter: 0.45 }, this.scene)
+        spectator.position.set(xPos, 0.6, zPos)
+        spectator.material = crowdMat
+        spectators.push(spectator)
+      }
+
+      let crowdTimer = 0
+      this.scene.onBeforeRenderObservable.add(() => {
+        crowdTimer += 0.05
+        spectators.forEach((s, idx) => {
+          s.position.y = 0.6 + Math.sin(crowdTimer + idx) * 0.18
+          s.scaling.y = 1.0 + Math.abs(Math.sin(crowdTimer + idx)) * 0.12
+        })
+      })
+    }
+
     // 3. Stage-specific dynamic backdrop assets
     if (theme === 'volcano') {
       groundMat.albedoColor = new Color3(0.08, 0.015, 0)
@@ -414,6 +464,123 @@ export class AssetManager {
       
       pillar.material = pMat
       pillar.receiveShadows = true
+    }
+
+    // Initialize environment weather particle system
+    this.createWeatherSystem(theme)
+  }
+
+  createWeatherSystem(theme: string): void {
+    if (theme === 'cyber-city') {
+      // 1. Rain system (fast-falling light blue lines)
+      const rainMat = new PBRMaterial('rainMat', this.scene)
+      rainMat.albedoColor = new Color3(0.5, 0.8, 1.0)
+      rainMat.emissiveColor = new Color3(0.3, 0.6, 0.9)
+      rainMat.emissiveIntensity = 2.0
+      rainMat.alpha = 0.4
+      rainMat.transparencyMode = PBRMaterial.PBRMATERIAL_ALPHABLEND
+
+      const count = 120
+      const rainLines: AbstractMesh[] = []
+      for (let i = 0; i < count; i++) {
+        const rainLine = MeshBuilder.CreateBox(`rain_${i}`, { width: 0.02, height: 0.8, depth: 0.02 }, this.scene)
+        rainLine.position.set(
+          (Math.random() - 0.5) * 40,
+          Math.random() * 12,
+          (Math.random() - 0.5) * 12
+        )
+        rainLine.material = rainMat
+        rainLines.push(rainLine)
+      }
+
+      this.scene.onBeforeRenderObservable.add(() => {
+        rainLines.forEach(rl => {
+          rl.position.y -= 0.35 + Math.random() * 0.1
+          rl.position.x -= 0.04 // slight angle wind drift
+          if (rl.position.y < 0) {
+            rl.position.y = 12
+            rl.position.x = (Math.random() - 0.5) * 40
+            rl.position.z = (Math.random() - 0.5) * 12
+          }
+        })
+      })
+    } 
+    else if (theme === 'volcano') {
+      // 2. Ash system (slow drifting orange ash)
+      const ashMat = new PBRMaterial('ashMat', this.scene)
+      ashMat.albedoColor = new Color3(1.0, 0.35, 0)
+      ashMat.emissiveColor = new Color3(0.8, 0.25, 0)
+      ashMat.emissiveIntensity = 2.5
+      ashMat.alpha = 0.7
+      ashMat.transparencyMode = PBRMaterial.PBRMATERIAL_ALPHABLEND
+
+      const count = 80
+      const ashParticles: AbstractMesh[] = []
+      for (let i = 0; i < count; i++) {
+        const ash = MeshBuilder.CreateBox(`ash_${i}`, { width: 0.08, height: 0.08, depth: 0.08 }, this.scene)
+        ash.position.set(
+          (Math.random() - 0.5) * 36,
+          Math.random() * 10,
+          (Math.random() - 0.5) * 12
+        )
+        ash.material = ashMat
+        ashParticles.push(ash)
+      }
+
+      let time = 0
+      this.scene.onBeforeRenderObservable.add(() => {
+        time += 0.02
+        ashParticles.forEach((ash, idx) => {
+          ash.position.y -= 0.04 + Math.random() * 0.03
+          ash.position.x += Math.sin(time + idx) * 0.02
+          ash.position.z += Math.cos(time + idx) * 0.02
+          if (ash.position.y < 0) {
+            ash.position.y = 10
+            ash.position.x = (Math.random() - 0.5) * 36
+            ash.position.z = (Math.random() - 0.5) * 12
+          }
+        })
+      })
+    } 
+    else if (theme === 'neon-dojo') {
+      // 3. Falling sakura petals (gently drifting pink planes/boxes)
+      const sakuraMat = new PBRMaterial('sakuraMat', this.scene)
+      sakuraMat.albedoColor = new Color3(1.0, 0.72, 0.77) // Pink
+      sakuraMat.emissiveColor = new Color3(0.9, 0.55, 0.6)
+      sakuraMat.emissiveIntensity = 1.8
+      sakuraMat.alpha = 0.85
+      sakuraMat.transparencyMode = PBRMaterial.PBRMATERIAL_ALPHABLEND
+
+      const count = 60
+      const petals: AbstractMesh[] = []
+      for (let i = 0; i < count; i++) {
+        const petal = MeshBuilder.CreateBox(`sakura_${i}`, { width: 0.15, height: 0.03, depth: 0.15 }, this.scene)
+        petal.position.set(
+          (Math.random() - 0.5) * 32,
+          Math.random() * 10,
+          (Math.random() - 0.5) * 11
+        )
+        petal.rotation.set(Math.random(), Math.random(), Math.random())
+        petal.material = sakuraMat
+        petals.push(petal)
+      }
+
+      let time = 0
+      this.scene.onBeforeRenderObservable.add(() => {
+        time += 0.015
+        petals.forEach((p, idx) => {
+          p.position.y -= 0.02 + Math.random() * 0.02
+          p.position.x -= 0.015 + Math.sin(time + idx) * 0.01
+          p.position.z += Math.cos(time + idx) * 0.01
+          p.rotation.y += 0.01
+          p.rotation.x += 0.005
+          if (p.position.y < 0) {
+            p.position.y = 10
+            p.position.x = (Math.random() - 0.5) * 32
+            p.position.z = (Math.random() - 0.5) * 11
+          }
+        })
+      })
     }
   }
 

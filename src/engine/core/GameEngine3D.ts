@@ -17,6 +17,7 @@ import { AIController } from '@engine/ai/AIController'
 import { audioManager } from '@engine/audio/AudioManager'
 import { Projectile } from './Projectile'
 import { STAGES } from '@constants/stages'
+import { CHARACTERS } from '@constants/characters'
 
 export type BattleState = 'waiting' | 'starting' | 'active' | 'ko' | 'round-end'
 
@@ -28,6 +29,7 @@ export class GameEngine3D {
   private p1AI: AIController | null = null
   private p2AI: AIController | null = null
   private projectiles: Projectile[] = []
+  isCSSMode: boolean = false
 
   assetManager: AssetManager
   physics: PhysicsEngine
@@ -68,6 +70,10 @@ export class GameEngine3D {
   // 3D Fighter upgrades tracking
   private cpuRecoveryActive: boolean = false
   private counterFlashTimer: number = 0
+  private isBarrierLShattered: boolean = false
+  private isBarrierRShattered: boolean = false
+  private lightningTimer: number = 0
+  private lightningFlashDuration: number = 0
 
   constructor(canvas: HTMLCanvasElement, inputManager: InputManager) {
     this.canvas = canvas
@@ -207,7 +213,90 @@ export class GameEngine3D {
     }
   }
 
+  async setupCharacterSelect(p1Id: string, p2Id: string): Promise<void> {
+    this.isCSSMode = true
+    this.audio.resume()
+    this.assetManager.createStage('neon-dojo') // Sleek zen garden background for CSS
+
+    const p1Def = CHARACTERS.find(c => c.id === p1Id) || CHARACTERS[0]
+    const p2Def = CHARACTERS.find(c => c.id === p2Id) || CHARACTERS[1]
+
+    this.player1 = new CharacterBase(p1Def, -2.2, true)
+    this.player2 = new CharacterBase(p2Def, 2.2, false)
+
+    const [p1Assets, p2Assets] = await Promise.all([
+      this.assetManager.loadCharacterModel(p1Def.modelPath, p1Def),
+      this.assetManager.loadCharacterModel(p2Def.modelPath, p2Def)
+    ])
+
+    this.player1.rootNode = p1Assets.root
+    this.player1.mesh = p1Assets.mesh
+    this.player1.animations = p1Assets.animations as any
+
+    this.player2.rootNode = p2Assets.root
+    this.player2.mesh = p2Assets.mesh
+    this.player2.animations = p2Assets.animations as any
+
+    this.player1.body.position = { x: -2.2, y: 0, z: 0 }
+    this.player2.body.position = { x: 2.2, y: 0, z: 0 }
+
+    if (this.camera) {
+      this.camera.radius = 6.2
+      this.camera.alpha = Math.PI / 2
+      this.camera.beta = Math.PI / 2.3
+      this.camera.setTarget(new Vector3(0, 1.25, 0))
+    }
+
+    this.gameLoop.start(this.update.bind(this), this.render.bind(this))
+  }
+
+  async changeCSSCharacter(player: 1 | 2, id: string): Promise<void> {
+    if (!this.isCSSMode) return
+    const pDef = CHARACTERS.find(c => c.id === id) || CHARACTERS[player === 1 ? 0 : 1]
+    const assets = await this.assetManager.loadCharacterModel(pDef.modelPath, pDef)
+
+    if (player === 1) {
+      if (this.player1 && this.player1.rootNode) {
+        this.player1.rootNode.dispose()
+      }
+      this.player1 = new CharacterBase(pDef, -2.2, true)
+      this.player1.rootNode = assets.root
+      this.player1.mesh = assets.mesh
+      this.player1.animations = assets.animations as any
+      this.player1.body.position = { x: -2.2, y: 0, z: 0 }
+    } else {
+      if (this.player2 && this.player2.rootNode) {
+        this.player2.rootNode.dispose()
+      }
+      this.player2 = new CharacterBase(pDef, 2.2, false)
+      this.player2.rootNode = assets.root
+      this.player2.mesh = assets.mesh
+      this.player2.animations = assets.animations as any
+      this.player2.body.position = { x: 2.2, y: 0, z: 0 }
+    }
+
+    // Spawn visual splash
+    const spawnPos = new Vector3(player === 1 ? -2.2 : 2.2, 1.2, 0)
+    this.particles.spawn('hit-spark', spawnPos, pDef.colors.primary)
+    this.audio.playSFX('menu_hover')
+  }
+
+  confirmCSSSelection(player: 1 | 2): void {
+    if (!this.isCSSMode) return
+    const char = player === 1 ? this.player1 : this.player2
+    if (char) {
+      char.currentAnimation = 'victory'
+      char.moveFrame = 0
+      this.shakeCamera(0.35, 15)
+      this.audio.playSFX('menu_select')
+      const targetPos = new Vector3(player === 1 ? -2.2 : 2.2, 1.25, 0)
+      this.particles.spawn('super-explosion', targetPos, char.def.colors.primary)
+    }
+  }
+
   async setupBattle(p1Def: CharacterDef, p2Def: CharacterDef, stageTheme: string): Promise<void> {
+    this.isBarrierLShattered = false
+    this.isBarrierRShattered = false
     this.audio.resume()
     this.assetManager.createStage(stageTheme)
 
@@ -301,8 +390,31 @@ export class GameEngine3D {
     }
   }
 
+  private updateCSS(frame: number): void {
+    if (!this.player1 || !this.player2) return
+
+    // Slowly rotate characters around Y
+    if (this.player1.rootNode) {
+      this.player1.rootNode.rotation.y = Math.PI / 5 + Math.sin(frame * 0.015) * 0.2
+    }
+    if (this.player2.rootNode) {
+      this.player2.rootNode.rotation.y = -Math.PI / 5 - Math.sin(frame * 0.015) * 0.2
+    }
+
+    // Animate accessories & idle bobbing
+    this.player1.updateAnimation()
+    this.player2.updateAnimation()
+
+    this.updateCamera()
+  }
+
   private update(_deltaTime: number, frame: number): void {
     if (!this.player1 || !this.player2) return
+
+    if (this.isCSSMode) {
+      this.updateCSS(frame)
+      return
+    }
 
     if (useGameStore.getState().isPaused) return
 
@@ -333,6 +445,46 @@ export class GameEngine3D {
       }
     }
 
+    // Environmental Lightning Storm for Cyber City
+    const currentStageId = useGameStore.getState().currentStageId
+    if (currentStageId === 'cyber-city') {
+      if (this.lightningFlashDuration > 0) {
+        this.lightningFlashDuration--
+        const hemi = this.scene.getLightByName('hemiLight')
+        if (hemi) {
+          hemi.intensity = (this.lightningFlashDuration === 4 || this.lightningFlashDuration === 2) ? 2.5 : 0.35
+        }
+      } else {
+        if (this.lightningTimer > 0) {
+          this.lightningTimer--
+        } else if (Math.random() < 0.0012) {
+          this.lightningFlashDuration = 4
+          this.lightningTimer = 400 + Math.random() * 300
+          this.audio.playSFX('ko', 0.25) // Low-frequency rumble
+        }
+      }
+    }
+
+    // Interactive Walled Barrier Collisions (Cyber City & Volcano)
+    const hasBarriers = currentStageId === 'cyber-city' || currentStageId === 'volcano'
+    if (hasBarriers && this.player1 && this.player2) {
+      const boundsX = currentStageId === 'volcano' ? 14.0 : 16.0
+      const checkPlayerBarrier = (player: CharacterBase) => {
+        if (Math.abs(player.body.position.x) >= boundsX - 0.05) {
+          const isLeft = player.body.position.x < 0
+          if (isLeft && !this.isBarrierLShattered) {
+            this.shatterBarrier('barrierL', -boundsX)
+            this.isBarrierLShattered = true
+          } else if (!isLeft && !this.isBarrierRShattered) {
+            this.shatterBarrier('barrierR', boundsX)
+            this.isBarrierRShattered = true
+          }
+        }
+      }
+      checkPlayerBarrier(this.player1)
+      checkPlayerBarrier(this.player2)
+    }
+
     this.input.update(frame)
 
     // Handle Super Flash
@@ -346,19 +498,27 @@ export class GameEngine3D {
       return
     }
 
-    // Play swing sound effects when moves start
+    // Play swing sound effects and synchronized voice grunts when moves start
     if (this.player1.currentMove && this.player1.moveFrame === 1 && this.player1.currentMove.id !== this.lastP1MoveId) {
       this.lastP1MoveId = this.player1.currentMove.id
-      if (this.player1.currentMove.type === 'special') {
+      const move = this.player1.currentMove
+      if (move.type === 'special') {
         this.audio.playSpecial(this.player1.id)
-      } else if (this.player1.currentMove.type === 'super') {
+        this.audio.playSFX('voice_shout', 0.9)
+      } else if (move.type === 'super') {
         this.audio.playSFX('super_activate')
+        this.audio.playSFX('super_chime')
+        this.audio.playSFX('voice_shout', 1.2)
       } else {
-        const moveId = this.player1.currentMove.id
+        const moveId = move.id
         let volumeScale = 1.0
-        if (moveId === 'punch-light') volumeScale = 0.5
-        else if (moveId === 'punch-hook') volumeScale = 1.0
-        else if (moveId === 'punch-uppercut') volumeScale = 1.4
+        if (moveId === 'punch-light' || moveId.includes('light')) {
+          volumeScale = 0.5
+          this.audio.playSFX('voice_grunt', 0.6)
+        } else if (moveId.includes('heavy') || moveId === 'punch-hook' || moveId === 'punch-uppercut') {
+          volumeScale = 1.2
+          this.audio.playSFX('voice_shout', 0.85)
+        }
         this.audio.playSFX('swing', volumeScale)
       }
     }
@@ -368,16 +528,24 @@ export class GameEngine3D {
 
     if (this.player2.currentMove && this.player2.moveFrame === 1 && this.player2.currentMove.id !== this.lastP2MoveId) {
       this.lastP2MoveId = this.player2.currentMove.id
-      if (this.player2.currentMove.type === 'special') {
+      const move = this.player2.currentMove
+      if (move.type === 'special') {
         this.audio.playSpecial(this.player2.id)
-      } else if (this.player2.currentMove.type === 'super') {
+        this.audio.playSFX('voice_shout', 0.9)
+      } else if (move.type === 'super') {
         this.audio.playSFX('super_activate')
+        this.audio.playSFX('super_chime')
+        this.audio.playSFX('voice_shout', 1.2)
       } else {
-        const moveId = this.player2.currentMove.id
+        const moveId = move.id
         let volumeScale = 1.0
-        if (moveId === 'punch-light') volumeScale = 0.5
-        else if (moveId === 'punch-hook') volumeScale = 1.0
-        else if (moveId === 'punch-uppercut') volumeScale = 1.4
+        if (moveId === 'punch-light' || moveId.includes('light')) {
+          volumeScale = 0.5
+          this.audio.playSFX('voice_grunt', 0.6)
+        } else if (moveId.includes('heavy') || moveId === 'punch-hook' || moveId === 'punch-uppercut') {
+          volumeScale = 1.2
+          this.audio.playSFX('voice_shout', 0.85)
+        }
         this.audio.playSFX('swing', volumeScale)
       }
     }
@@ -1004,6 +1172,15 @@ export class GameEngine3D {
 
   private updateCamera(): void {
     if (!this.player1 || !this.player2 || !this.camera) return
+
+    if (this.isCSSMode) {
+      this.camera.radius = 6.2
+      this.camera.alpha = Math.PI / 2
+      this.camera.beta = Math.PI / 2.3
+      this.camera.setTarget(new Vector3(0, 1.25, 0))
+      return
+    }
+
     const midpointX = (this.player1.body.position.x + this.player2.body.position.x) / 2
     const midpointY = (this.player1.body.position.y + this.player2.body.position.y) / 2 + 1.5
     const midpointZ = (this.player1.body.position.z + this.player2.body.position.z) / 2
@@ -1048,6 +1225,20 @@ export class GameEngine3D {
     this.engine.stopRenderLoop() 
     this.audio.stopMusic()
     this.clearHitboxVisualization()
+  }
+
+  private shatterBarrier(meshName: string, xPos: number): void {
+    const mesh = this.scene.getMeshByName(meshName)
+    if (mesh) {
+      mesh.dispose()
+    }
+    this.audio.playSFX('barrier_shatter')
+    const color = useGameStore.getState().currentStageId === 'volcano' ? '#FF6600' : '#00FFFF'
+    for (let i = 0; i < 20; i++) {
+      const spawnPos = new Vector3(xPos, 0.4 + Math.random() * 1.6, (Math.random() - 0.5) * 6.5)
+      this.particles.spawn('hit-spark', spawnPos, color)
+    }
+    this.shakeCamera(0.42, 20)
   }
 
   getScene(): Scene { return this.scene }
