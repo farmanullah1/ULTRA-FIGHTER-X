@@ -4,7 +4,6 @@ import type { InputState } from '@game-types/input.types'
 import type { InputBuffer } from '@game-types/input.types'
 import { STARTING_HEALTH, MAX_METER } from '@constants/gameConstants'
 import { TransformNode, AbstractMesh, AnimationGroup } from '@babylonjs/core'
-
 export class CharacterBase {
   id: string
   def: CharacterDef
@@ -12,7 +11,20 @@ export class CharacterBase {
   health: number = STARTING_HEALTH
   meter: number = 0
   facingRight: boolean = true
-  
+  throwOwner: CharacterBase | null = null
+
+  // 3D Fighter additions
+  sidestepTimer: number = 0
+  sidestepDir: number = 0 // 1 for background (up), -1 for foreground (down)
+  crouchDashTimer: number = 0
+  isParrying: boolean = false
+  parryTimer: number = 0
+  isBeingThrown: boolean = false
+  throwBreakTimer: number = 0
+  throwBreakPressed: boolean = false
+  justQuickShifted: boolean = false
+  quickShiftVFXTimer: number = 0
+
   // 3D Rendering Refs
   rootNode: TransformNode | null = null
   mesh: AbstractMesh | null = null
@@ -80,7 +92,14 @@ export class CharacterBase {
     return part
   }
 
-  update(input: InputState, inputBuffer: InputBuffer, frame: number, physics: PhysicsEngine, inputManager: any): void {
+  update(
+    input: InputState,
+    inputBuffer: InputBuffer,
+    frame: number,
+    physics: PhysicsEngine,
+    inputManager: any,
+    opponentPos?: { x: number; y: number; z: number }
+  ): void {
     // Update hitstop
     if (this.hitstopTimer > 0) {
       this.hitstopTimer--
@@ -89,7 +108,49 @@ export class CharacterBase {
     }
     this.body.isFrozen = false
 
-    // Update timers
+    // Update 3D fighter timers & velocities
+    if (this.sidestepTimer > 0) {
+      this.sidestepTimer--
+      this.body.velocity.z = this.sidestepDir * 0.15
+      if (this.sidestepTimer === 0) {
+        this.body.velocity.z = 0
+      }
+    }
+    if (this.crouchDashTimer > 0) {
+      this.crouchDashTimer--
+      this.body.velocity.x = (this.facingRight ? 1 : -1) * this.def.stats.walkSpeed * 2.2
+      this.currentAnimation = 'crouch'
+      if (this.crouchDashTimer === 0) {
+        this.body.velocity.x = 0
+      }
+    }
+    if (this.parryTimer > 0) {
+      this.parryTimer--
+      if (this.parryTimer === 0) {
+        this.isParrying = false
+      }
+    }
+    if (this.quickShiftVFXTimer > 0) {
+      this.quickShiftVFXTimer--
+      if (this.quickShiftVFXTimer === 0) {
+        this.justQuickShifted = false
+      }
+    }
+
+    // Handle throw mechanics (lock position/actions)
+    if (this.isBeingThrown) {
+      if (this.throwBreakTimer > 0) {
+        this.throwBreakTimer--
+        if (input.punch && input.kick) {
+          this.throwBreakPressed = true
+        }
+      }
+      this.update3DNode(opponentPos)
+      this.updateAnimation()
+      return
+    }
+
+    // Update standard timers
     if (this.hitstunTimer > 0) {
       this.hitstunTimer--
       if (this.hitstunTimer === 0) {
@@ -112,25 +173,66 @@ export class CharacterBase {
       }
     }
 
+    // Wake-up kick trigger
+    if (this.isKnockedDown && (input.kick || input.heavyKick)) {
+      this.isKnockedDown = false
+      this.getupTimer = 0
+      this.triggerAttack('kick-wakeup', frame)
+    }
+
     const isStunned = this.hitstunTimer > 0 || this.blockstunTimer > 0
     
+    // EX Quick Shift Cancel Check during attack frames
+    if (this.currentMove && !isStunned && !this.isKnockedDown) {
+      const canCancel = this.moveFrame > this.currentMove.startup
+      if (canCancel && input.dash && this.meter >= 200) {
+        this.meter -= 200
+        this.currentMove = null
+        this.moveFrame = 0
+        this.justQuickShifted = true
+        this.quickShiftVFXTimer = 15
+        
+        // Quick shift into a sidestep based on directional input
+        if (input.down) {
+          this.sidestepTimer = 12
+          this.sidestepDir = -1
+        } else {
+          this.sidestepTimer = 12
+          this.sidestepDir = 1
+        }
+      }
+    }
+
     if (!isStunned && !this.isKnockedDown) {
       this.processInput(input, inputBuffer, frame, physics, inputManager)
     }
     
+    // Adjust height dynamically for crouching / crouch-dashing to dodge highs
+    const isCrouchedState = this.currentAnimation === 'crouch' || 
+                            this.currentAnimation === 'crouch-block' ||
+                            this.crouchDashTimer > 0
+    this.body.height = isCrouchedState ? 1.1 : 2.5
+
     physics.update(this.body)
-    this.update3DNode()
+    this.update3DNode(opponentPos)
     this.updateAnimation()
   }
 
-  private update3DNode(): void {
+  private update3DNode(opponentPos?: { x: number; y: number; z: number }): void {
     if (this.rootNode) {
       this.rootNode.position.x = this.body.position.x
       this.rootNode.position.y = this.body.position.y
       this.rootNode.position.z = this.body.position.z
       
-      // Face the opponent
-      this.rootNode.rotation.y = this.facingRight ? Math.PI / 2 : -Math.PI / 2
+      // Face the opponent dynamically in 3D
+      if (opponentPos) {
+        const dx = opponentPos.x - this.body.position.x
+        const dz = opponentPos.z - this.body.position.z
+        // Align model's forward vector (+X default) with opponent
+        this.rootNode.rotation.y = Math.PI / 2 - Math.atan2(dz, dx)
+      } else {
+        this.rootNode.rotation.y = this.facingRight ? Math.PI / 2 : -Math.PI / 2
+      }
     }
   }
 
@@ -145,7 +247,48 @@ export class CharacterBase {
 
     if (this.currentMove) return
 
-    // 1. Check for Special Moves first (highest precedence)
+    // 1. Throws (Light Punch + Light Kick: punch && kick)
+    if (input.punch && input.kick && this.body.isGrounded) {
+      this.triggerAttack('throw', frame)
+      return
+    }
+
+    // 2. Parry / Guard Impact (Light Punch + Block: punch && block)
+    if (input.punch && input.block && this.body.isGrounded) {
+      this.isParrying = true
+      this.parryTimer = 10
+      this.currentAnimation = 'block'
+      return
+    }
+
+    // 3. Sidestepping (Double Tap Up or Down)
+    if (this.body.isGrounded) {
+      if (this.checkDoubleTap(buffer, 'up')) {
+        this.sidestepTimer = 12
+        this.sidestepDir = 1
+        return
+      }
+      if (this.checkDoubleTap(buffer, 'down')) {
+        this.sidestepTimer = 12
+        this.sidestepDir = -1
+        return
+      }
+    }
+
+    // 4. Crouch Dash (F, D, DF sequence or crouch + dash)
+    if (this.body.isGrounded) {
+      const isFacingRight = this.facingRight
+      const forwardSeq = isFacingRight ? ['F', 'D', 'DF'] : ['B', 'D', 'DB']
+      const isCrouching = input.down || this.currentAnimation === 'crouch'
+      if ((isCrouching && input.dash) || inputManager.checkInputSequence(buffer, forwardSeq)) {
+        this.crouchDashTimer = 15
+        this.body.velocity.x = (isFacingRight ? 1 : -1) * walkSpeed * 2.2
+        this.currentAnimation = 'crouch'
+        return
+      }
+    }
+
+    // 5. Special Moves check (highest precedence after throws/parries/movement)
     const sortedMoves = [...this.def.moves].sort((a, b) => b.inputSequence.length - a.inputSequence.length)
 
     for (const move of sortedMoves) {
@@ -173,13 +316,12 @@ export class CharacterBase {
       ? (input.right ? 1 : input.left ? -1 : 0)
       : (input.left ? 1 : input.right ? -1 : 0)
 
-
     if (moveDir !== 0 && !this.currentMove) {
       this.body.velocity.x = moveDir * walkSpeed
       this.currentAnimation = moveDir > 0 ? 'walk-forward' : 'walk-backward'
     }
 
-    // Jump
+    // Jump / Hop
     if (input.up && this.body.isGrounded) {
       physics.jump(this.body, jumpHeight)
       this.currentAnimation = 'jump'
@@ -206,8 +348,60 @@ export class CharacterBase {
     }
   }
 
-  private triggerAttack(type: string, _frame: number): void {
-    const move = this.def.moves.find(m => m.id === type)
+  private checkDoubleTap(buffer: InputBuffer, direction: 'up' | 'down'): boolean {
+    const frames = buffer.frames
+    if (frames.length < 5) return false
+
+    const lastIdx = frames.length - 1
+    if (!frames[lastIdx].state[direction]) return false
+
+    // Trace back the current tap start
+    let i = lastIdx
+    while (i >= 0 && frames[i].state[direction]) {
+      i--
+    }
+    if (i < 0) return false
+    const currentPressStartFrame = frames[i + 1].frame
+
+    // Trace back the release period
+    while (i >= 0 && !frames[i].state[direction]) {
+      i--
+    }
+    if (i < 0) return false
+    const prevPressEndFrame = frames[i].frame
+
+    // Match double tap time intervals (2 to 12 frames)
+    const gap = currentPressStartFrame - prevPressEndFrame
+    if (gap > 12 || gap < 2) return false
+
+    // Verify first tap duration
+    while (i >= 0 && frames[i].state[direction]) {
+      i--
+    }
+    const prevPressStartFrame = frames[i + 1].frame
+    const firstPressDuration = prevPressEndFrame - prevPressStartFrame
+    if (firstPressDuration > 12) return false // Too slow
+
+    // Restrict trigger only to the first active frame of second tap
+    const currentFrame = frames[lastIdx].frame
+    if (currentFrame !== currentPressStartFrame) return false
+
+    return true
+  }
+
+  triggerAttack(type: string, _frame: number): void {
+    const move = type === 'throw'
+      ? {
+          id: 'throw', name: 'Standard Throw', input: 'LP+LK', inputSequence: [], damage: 120, meterGain: 20, meterCost: 0, cancelable: false, invincible: false, startup: 6, active: 4, recovery: 22, onHit: 0, onBlock: 0, animationState: 'punch-heavy', type: 'throw',
+          hitboxes: [{ frameStart: 6, frameEnd: 10, x: 0.4, y: 1.0, z: 0, width: 0.8, height: 0.8, depth: 0.8, type: 'throw', damage: 120, knockback: { x: 0.4, y: 0.3, z: 0 } }]
+        } as Move
+      : (type === 'kick-wakeup'
+        ? {
+            id: 'kick-wakeup', name: 'Wakeup Kick', input: 'K', inputSequence: [], damage: 45, meterGain: 15, meterCost: 0, cancelable: false, invincible: false, startup: 6, active: 4, recovery: 15, onHit: 12, onBlock: -4, animationState: 'kick-light', type: 'light-kick',
+            hitboxes: [{ frameStart: 6, frameEnd: 10, x: 0.5, y: 0.2, z: 0, width: 0.8, height: 0.3, depth: 0.6, type: 'attack', damage: 45, knockback: { x: 0.4, y: 0.1, z: 0 } }]
+          } as Move
+        : this.def.moves.find(m => m.id === type))
+
     if (move && !this.currentMove) {
       // Check Meter Cost
       if (move.meterCost > 0 && this.meter < move.meterCost) return

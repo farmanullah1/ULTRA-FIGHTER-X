@@ -16,6 +16,7 @@ import { ParticleSystemManager } from '@engine/ParticleSystem'
 import { AIController } from '@engine/ai/AIController'
 import { audioManager } from '@engine/audio/AudioManager'
 import { Projectile } from './Projectile'
+import { STAGES } from '@constants/stages'
 
 export type BattleState = 'waiting' | 'starting' | 'active' | 'ko' | 'round-end'
 
@@ -63,6 +64,9 @@ export class GameEngine3D {
   // Sound triggering trackers
   private lastP1MoveId: string | null = null
   private lastP2MoveId: string | null = null
+
+  // 3D Fighter upgrades tracking
+  private cpuRecoveryActive: boolean = false
 
   constructor(canvas: HTMLCanvasElement, inputManager: InputManager) {
     this.canvas = canvas
@@ -205,6 +209,11 @@ export class GameEngine3D {
   async setupBattle(p1Def: CharacterDef, p2Def: CharacterDef, stageTheme: string): Promise<void> {
     this.audio.resume()
     this.assetManager.createStage(stageTheme)
+
+    // Set stage boundaries on physics engine
+    const stage = STAGES.find(s => s.id === stageTheme || s.theme === stageTheme) || STAGES[0]
+    this.physics.bounds = stage.bounds
+    this.physics.isRingOut = stage.isRingOut
 
     this.player1 = new CharacterBase(p1Def, -3, true)
     this.player2 = new CharacterBase(p2Def, 3, false)
@@ -436,16 +445,93 @@ export class GameEngine3D {
     if (!this.player1.currentMove && !this.player1.isInHitstun) this.player1.facingRight = this.player1.body.position.x < this.player2.body.position.x
     if (!this.player2.currentMove && !this.player2.isInHitstun) this.player2.facingRight = this.player2.body.position.x < this.player1.body.position.x
 
-    this.player1.update(effectiveP1Input, this.input.getP1Buffer(), frame, this.physics, this.input)
-    this.player2.update(effectiveP2Input, this.input.getP2Buffer(), frame, this.physics, this.input)
+    this.player1.update(effectiveP1Input, this.input.getP1Buffer(), frame, this.physics, this.input, this.player2.body.position)
+    this.player2.update(effectiveP2Input, this.input.getP2Buffer(), frame, this.physics, this.input, this.player1.body.position)
+
+    // Trigger Quick Shift Cancel Visuals
+    if (this.player1.justQuickShifted) {
+      this.particles.spawn('hit-spark', this.player1.body.position as any, '#FFFFFF')
+      this.audio.playSFX('swing')
+    }
+    if (this.player2.justQuickShifted) {
+      this.particles.spawn('hit-spark', this.player2.body.position as any, '#FFFFFF')
+      this.audio.playSFX('swing')
+    }
+
+    // Resolve Whiffs
+    if (this.player1.currentMove && this.player1.moveFrame === this.player1.currentMove.startup + this.player1.currentMove.active) {
+      if (!this.player1.hasLandedHit) {
+        this.audio.playSFX('swing')
+      }
+    }
+    if (this.player2.currentMove && this.player2.moveFrame === this.player2.currentMove.startup + this.player2.currentMove.active) {
+      if (!this.player2.hasLandedHit) {
+        this.audio.playSFX('swing')
+      }
+    }
+
+    // Resolve Throw Break triggers
+    if (this.player1.isBeingThrown && this.player1.throwBreakPressed) {
+      this.resolveThrowBreak(this.player1)
+    }
+    if (this.player2.isBeingThrown && this.player2.throwBreakPressed) {
+      this.resolveThrowBreak(this.player2)
+    }
+    if (this.player1.isBeingThrown && this.player1.throwBreakTimer === 0) {
+      this.resolveThrowSuccess(this.player1)
+    }
+    if (this.player2.isBeingThrown && this.player2.throwBreakTimer === 0) {
+      this.resolveThrowSuccess(this.player2)
+    }
 
     this.checkCollisions(this.player1, this.player2)
     this.checkCollisions(this.player2, this.player1)
 
     this.physics.resolveOverlap(this.player1.body, this.player2.body)
 
+    // Resolve Wall Splats during hitstun
+    if (this.player1.isInHitstun && this.player1.body.hitWall) {
+      this.player1.hitstunTimer = 45
+      this.player1.body.velocity.x = this.player1.facingRight ? 0.05 : -0.05
+      this.player1.body.velocity.z = 0
+      this.player1.body.hitWall = null
+      this.audio.playSFX('super_impact')
+      this.particles.spawn('hit-spark', new Vector3(this.player1.body.position.x, this.player1.body.position.y + 1.2, this.player1.body.position.z), this.player1.def.colors.primary)
+      useGameStore.getState().setCustomBannerText("WALL SPLAT!")
+      setTimeout(() => useGameStore.getState().setCustomBannerText(null), 1200)
+    }
+    if (this.player2.isInHitstun && this.player2.body.hitWall) {
+      this.player2.hitstunTimer = 45
+      this.player2.body.velocity.x = this.player2.facingRight ? 0.05 : -0.05
+      this.player2.body.velocity.z = 0
+      this.player2.body.hitWall = null
+      this.audio.playSFX('super_impact')
+      this.particles.spawn('hit-spark', new Vector3(this.player2.body.position.x, this.player2.body.position.y + 1.2, this.player2.body.position.z), this.player2.def.colors.primary)
+      useGameStore.getState().setCustomBannerText("WALL SPLAT!")
+      setTimeout(() => useGameStore.getState().setCustomBannerText(null), 1200)
+    }
+
     // Visual hitbox overlay update
     this.updateHitboxVisualization()
+
+    // Resolve Ring Outs
+    const p1RingOut = this.player1.body.position.y < -4
+    const p2RingOut = this.player2.body.position.y < -4
+    if (this.battleState === 'active' && (p1RingOut || p2RingOut)) {
+      this.battleState = 'ko'
+      this.stateTimer = 180
+      this.gameLoop.setTimeScale(0.18)
+      useGameStore.getState().setBattleState('ko')
+      
+      if (p1RingOut) this.player1.health = 0
+      else this.player2.health = 0
+      
+      useGameStore.getState().setCustomBannerText("RING OUT!")
+      this.audio.playSFX('ko')
+      this.shakeCamera(0.6, 25)
+      this.player1.body.isFrozen = true
+      this.player2.body.isFrozen = true
+    }
 
     if (this.battleState === 'active') {
       if (this.player1.isDead || this.player2.isDead || this.roundTime <= 0) {
@@ -456,7 +542,6 @@ export class GameEngine3D {
         this.audio.playSFX('ko')
         this.shakeCamera(0.6, 25)
         
-        // Massive haptic rumble on knockout
         if ('vibrate' in navigator) {
           navigator.vibrate([200, 100, 300])
         }
@@ -495,7 +580,97 @@ export class GameEngine3D {
       store.updateMeter(1, this.player1.meter); store.updateMeter(2, this.player2.meter);
     }
 
+    // Random dummy unsafe move triggers in CPU training mode
+    if (storeState.gameMode === 'training' && storeState.dummyMode === 'cpu') {
+      if (!this.player2.currentMove && this.player2.body.isGrounded && !this.player2.isInHitstun && !this.player2.isInBlockstun && !this.player2.isKnockedDown) {
+        if (frame % 240 === 0 && Math.random() < 0.75) {
+          const unsafeMoves = this.player2.def.moves.filter(m => m.onBlock < -5)
+          if (unsafeMoves.length > 0) {
+            const m = unsafeMoves[Math.floor(Math.random() * unsafeMoves.length)]
+            this.player2.triggerAttack(m.id, frame)
+          }
+        }
+      }
+    }
+
+    // Punishment alert processing for training mode
+    if (storeState.gameMode === 'training') {
+      if (this.player2.currentMove) {
+        const move = this.player2.currentMove
+        const isUnsafe = move.onBlock < -5
+        if (this.player2.moveFrame > move.startup) {
+          if (this.player1.isInBlockstun && isUnsafe) {
+            useGameStore.getState().setPunishAlert('punishable')
+            this.cpuRecoveryActive = true
+          }
+        }
+      }
+      
+      if (this.cpuRecoveryActive) {
+        if (this.player2.isInHitstun) {
+          useGameStore.getState().setPunishAlert('punished')
+          this.cpuRecoveryActive = false
+          setTimeout(() => {
+            if (useGameStore.getState().punishAlert === 'punished') {
+              useGameStore.getState().setPunishAlert(null)
+            }
+          }, 1500)
+        } else if (!this.player2.currentMove && !this.player2.isInHitstun) {
+          this.cpuRecoveryActive = false
+          setTimeout(() => {
+            if (useGameStore.getState().punishAlert === 'punishable') {
+              useGameStore.getState().setPunishAlert(null)
+            }
+          }, 1000)
+        }
+      }
+    }
+
     this.updateCamera()
+  }
+
+  private resolveThrowBreak(victim: CharacterBase): void {
+    const attacker = victim.throwOwner
+    if (!attacker) return
+    
+    // Reset states
+    victim.isBeingThrown = false
+    victim.throwBreakTimer = 0
+    victim.throwBreakPressed = false
+    victim.throwOwner = null
+    
+    attacker.currentMove = null
+    attacker.moveFrame = 0
+    
+    // Stagger pushback away from each other
+    const dir = victim.body.position.x < attacker.body.position.x ? -1 : 1
+    victim.body.velocity.x = dir * 0.18
+    attacker.body.velocity.x = -dir * 0.18
+    
+    // Play parry or throw break sound
+    this.audio.playSFX('block')
+    this.particles.spawn('hit-spark', new Vector3((victim.body.position.x + attacker.body.position.x)/2, victim.body.position.y + 1.2, 0), '#FFFFFF')
+    
+    useGameStore.getState().setCustomBannerText("THROW BREAK!")
+    setTimeout(() => useGameStore.getState().setCustomBannerText(null), 1200)
+  }
+
+  private resolveThrowSuccess(victim: CharacterBase): void {
+    const attacker = victim.throwOwner
+    if (!attacker) return
+    
+    victim.isBeingThrown = false
+    victim.throwOwner = null
+    
+    // Apply throw damage and heavy knockdown
+    victim.receiveHit(120, 60, { x: 0.35, y: 0.25, z: 0 })
+    this.audio.playSFX('super_impact')
+    
+    // Attacker gains meter and enters recovery finish
+    attacker.meter = Math.min(1000, attacker.meter + 150)
+    
+    // Clear visual banner
+    useGameStore.getState().setCustomBannerText(null)
   }
 
   private updateHitboxVisualization(): void {
@@ -598,16 +773,37 @@ export class GameEngine3D {
     this.player2.health = 1000
     this.player1.body.position.x = -3
     this.player2.body.position.x = 3
+    this.player1.body.position.y = 0
+    this.player2.body.position.y = 0
+    this.player1.body.position.z = 0
+    this.player2.body.position.z = 0
     this.player1.body.velocity.x = 0
     this.player2.body.velocity.x = 0
+    this.player1.body.velocity.y = 0
+    this.player2.body.velocity.y = 0
+    this.player1.body.velocity.z = 0
+    this.player2.body.velocity.z = 0
     this.player1.currentAnimation = 'idle'
     this.player2.currentAnimation = 'idle'
     
+    // Reset throw/parry states
+    this.player1.isBeingThrown = false
+    this.player2.isBeingThrown = false
+    this.player1.throwBreakPressed = false
+    this.player2.throwBreakPressed = false
+    this.player1.throwOwner = null
+    this.player2.throwOwner = null
+    this.player1.isParrying = false
+    this.player2.isParrying = false
+    this.player1.body.isFrozen = false
+    this.player2.body.isFrozen = false
+
     // Resume battle music if play mode
     if (useGameStore.getState().gameMode !== 'attract') {
       this.audio.startBattleMusic(useGameStore.getState().currentStageId)
     }
 
+    useGameStore.getState().setCustomBannerText(null)
     useGameStore.getState().setBattleState('waiting')
     setTimeout(() => useGameStore.getState().setBattleState('starting'), 10)
   }
@@ -619,11 +815,52 @@ export class GameEngine3D {
   private checkCollisions(attacker: CharacterBase, victim: CharacterBase): void {
     if (!attacker.currentMove || attacker.hasLandedHit) return
     const victimHurtbox = this.collision.getCharacterHurtbox(victim.body.position.x, victim.body.position.y, victim.body.position.z, victim.body.width, victim.body.height, victim.body.depth)
-    const hit = this.collision.checkAttackHit(attacker.body.position.x, attacker.body.position.y, attacker.body.position.z, attacker.facingRight, attacker.currentMove.hitboxes, attacker.moveFrame, victimHurtbox, victim.isBlocking)
+    
+    // Scale up depth if homing attack (heavy punches, heavy kicks, sweeps, spins)
+    const isHoming = attacker.currentMove.id.includes('heavy') || attacker.currentMove.id.includes('spin') || attacker.currentMove.id.includes('sweep')
+    const hitboxesToUse = attacker.currentMove.hitboxes.map(h => {
+      if (isHoming) {
+        return { ...h, depth: Math.max(h.depth, 3.5) }
+      }
+      return h
+    })
+
+    const hit = this.collision.checkAttackHit(attacker.body.position.x, attacker.body.position.y, attacker.body.position.z, attacker.facingRight, hitboxesToUse, attacker.moveFrame, victimHurtbox, victim.isBlocking)
 
     if (hit) {
       attacker.hasLandedHit = true
-      const hitPos = new Vector3((attacker.body.position.x + victim.body.position.x) / 2, attacker.body.position.y + 1.5, 0)
+      
+      // 1. Parry check
+      if (victim.isParrying) {
+        attacker.isInHitstun = true
+        attacker.hitstunTimer = 45
+        attacker.currentMove = null
+        attacker.currentAnimation = 'hit-stun'
+        attacker.body.velocity.x = attacker.facingRight ? -0.15 : 0.15
+        attacker.body.velocity.z = 0
+        
+        this.audio.playSFX('menu_select')
+        
+        const hitPos = new Vector3((attacker.body.position.x + victim.body.position.x) / 2, attacker.body.position.y + 1.5, (attacker.body.position.z + victim.body.position.z) / 2)
+        this.particles.spawn('hit-spark', hitPos, '#FFFF00')
+        
+        useGameStore.getState().setCustomBannerText("GUARD IMPACT!")
+        setTimeout(() => useGameStore.getState().setCustomBannerText(null), 1200)
+        return
+      }
+
+      // 2. Throw check
+      if (attacker.currentMove.id === 'throw') {
+        victim.isBeingThrown = true
+        victim.throwBreakTimer = 12
+        victim.throwBreakPressed = false
+        victim.throwOwner = attacker
+        
+        this.audio.playSFX('swing')
+        return
+      }
+
+      const hitPos = new Vector3((attacker.body.position.x + victim.body.position.x) / 2, attacker.body.position.y + 1.5, (attacker.body.position.z + victim.body.position.z) / 2)
       const store = useGameStore.getState()
       store.incrementCombo(attacker === this.player1 ? 1 : 2)
       
@@ -633,17 +870,19 @@ export class GameEngine3D {
         victim.receiveBlock(hit.damage, hit.blockstun)
         this.audio.playSFX('block')
         if ('vibrate' in navigator) navigator.vibrate(30)
+        
+        const adv = attacker.currentMove.onBlock
+        store.setFrameAdvantage(attacker === this.player1 ? 1 : 2, adv)
       }
       else { 
         victim.receiveHit(hit.damage, hit.hitstun, hit.knockback)
         this.particles.spawn('hit-spark', hitPos, attacker.def.colors.aura)
         this.audio.playSFX(isHeavy ? 'super_impact' : 'hit')
         this.shakeCamera(isHeavy ? 0.45 : 0.25, 12)
+        if ('vibrate' in navigator) navigator.vibrate(isHeavy ? 75 : 40)
         
-        // Haptic feedback pulses based on hit strength
-        if ('vibrate' in navigator) {
-          navigator.vibrate(isHeavy ? 75 : 40)
-        }
+        const adv = attacker.currentMove.onHit
+        store.setFrameAdvantage(attacker === this.player1 ? 1 : 2, adv)
       }
       
       const hs = isHeavy ? 8 : 4
@@ -661,13 +900,22 @@ export class GameEngine3D {
     if (!this.player1 || !this.player2 || !this.camera) return
     const midpointX = (this.player1.body.position.x + this.player2.body.position.x) / 2
     const midpointY = (this.player1.body.position.y + this.player2.body.position.y) / 2 + 1.5
-    const targetPos = new Vector3(midpointX, midpointY, 0)
+    const midpointZ = (this.player1.body.position.z + this.player2.body.position.z) / 2
+    const targetPos = new Vector3(midpointX, midpointY, midpointZ)
 
     if (this.shakeTimer > 0) {
       targetPos.x += (Math.random() - 0.5) * this.shakeIntensity
       targetPos.y += (Math.random() - 0.5) * this.shakeIntensity
+      targetPos.z += (Math.random() - 0.5) * this.shakeIntensity
       this.shakeTimer--
     }
+
+    const dx = this.player2.body.position.x - this.player1.body.position.x
+    const dz = this.player2.body.position.z - this.player1.body.position.z
+    const targetAlpha = Math.atan2(dz, dx) + Math.PI / 2
+    let diff = targetAlpha - this.camera.alpha
+    diff = Math.atan2(Math.sin(diff), Math.cos(diff))
+    this.camera.alpha += diff * 0.08
 
     if (this.isSuperFlashActive) {
       const activePlayer = this.player1.currentMove?.type === 'super' ? this.player1 : this.player2
@@ -675,11 +923,10 @@ export class GameEngine3D {
       targetPos.y += 1.5
       this.camera.radius = 5.5
     } else if (this.battleState === 'ko') {
-      // Zoom in tight during knockout sequence
-      const dist = Math.abs(this.player1.body.position.x - this.player2.body.position.x)
+      const dist = Math.sqrt(dx * dx + dz * dz)
       this.camera.radius = Math.max(4.0, Math.min(dist * 0.9, 10))
     } else {
-      const dist = Math.abs(this.player1.body.position.x - this.player2.body.position.x)
+      const dist = Math.sqrt(dx * dx + dz * dz)
       this.camera.radius = Math.max(8, Math.min(dist * 1.5, 18))
     }
 

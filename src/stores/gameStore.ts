@@ -43,6 +43,12 @@ interface GameState {
   dummyMode: 'idle' | 'block' | 'crouch' | 'crouch-block' | 'cpu'
   trainingRefill: boolean
 
+  // Frame Advantage & Training alerts
+  p1FrameAdvantage: number | null
+  p2FrameAdvantage: number | null
+  punishAlert: 'punishable' | 'punished' | null
+  customBannerText: string | null
+
   // Actions
   setScreen: (screen: GameScreen) => void
   setBattleState: (state: 'waiting' | 'starting' | 'active' | 'ko' | 'round-end') => void
@@ -61,7 +67,9 @@ interface GameState {
   resetMatch: () => void
   setDummyMode: (mode: 'idle' | 'block' | 'crouch' | 'crouch-block' | 'cpu') => void
   setTrainingRefill: (enabled: boolean) => void
-
+  setFrameAdvantage: (player: 1 | 2, adv: number | null) => void
+  setPunishAlert: (alert: 'punishable' | 'punished' | null) => void
+  setCustomBannerText: (text: string | null) => void
 }
 
 export const useGameStore = create<GameState>()(
@@ -95,6 +103,11 @@ export const useGameStore = create<GameState>()(
     matchId: 0,
     dummyMode: 'idle',
     trainingRefill: true,
+    
+    p1FrameAdvantage: null,
+    p2FrameAdvantage: null,
+    punishAlert: null,
+    customBannerText: null,
 
     setScreen: (screen) => set(state => { state.screen = screen }),
     setBattleState: (battleState) => set(state => { state.battleState = battleState }),
@@ -106,6 +119,10 @@ export const useGameStore = create<GameState>()(
       state.battleState = 'waiting'
       state.player1Combo = 0
       state.player2Combo = 0
+      state.p1FrameAdvantage = null
+      state.p2FrameAdvantage = null
+      state.punishAlert = null
+      state.customBannerText = null
     }),
     setGameMode: (mode) => set(state => { state.gameMode = mode }),
     selectCharacter: (player, id) => set(state => {
@@ -158,8 +175,18 @@ export const useGameStore = create<GameState>()(
       state.isBattleActive = false
       state.player1Combo = 0
       state.player2Combo = 0
+      state.p1FrameAdvantage = null
+      state.p2FrameAdvantage = null
+      state.punishAlert = null
+      state.customBannerText = null
     }),
     setDummyMode: (mode) => set(state => { state.dummyMode = mode }),
     setTrainingRefill: (enabled) => set(state => { state.trainingRefill = enabled }),
+    setFrameAdvantage: (player, adv) => set(state => {
+      if (player === 1) state.p1FrameAdvantage = adv
+      else state.p2FrameAdvantage = adv
+    }),
+    setPunishAlert: (alert) => set(state => { state.punishAlert = alert }),
+    setCustomBannerText: (text) => set(state => { state.customBannerText = text })
   }))
 )

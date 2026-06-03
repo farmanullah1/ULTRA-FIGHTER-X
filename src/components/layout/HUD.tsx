@@ -17,7 +17,9 @@ export const HUD: React.FC = () => {
     player1Combo, player2Combo,
     currentRound, roundsWon,
     gameMode, dummyMode, setDummyMode,
-    trainingRefill, setTrainingRefill
+    trainingRefill, setTrainingRefill,
+    p1FrameAdvantage, p2FrameAdvantage,
+    punishAlert, customBannerText
   } = useGameStore()
 
   const { showHitboxes, toggleHitboxes } = useSettingsStore()
@@ -105,6 +107,17 @@ export const HUD: React.FC = () => {
               </button>
             </motion.div>
           )}
+          {customBannerText && (
+            <motion.div
+              initial={{ scale: 0, opacity: 0, rotate: -5 }}
+              animate={{ scale: 1.1, opacity: 1, rotate: -5 }}
+              exit={{ scale: 2, opacity: 0, filter: 'blur(10px)' }}
+              transition={{ type: 'spring', damping: 10 }}
+              className="bg-neon-magenta/90 text-white text-4xl md:text-7xl font-display font-black px-12 md:px-20 py-3 md:py-5 italic shadow-2xl border-y-4 border-white drop-shadow-glow skew-x-12 z-30 text-center"
+            >
+              {customBannerText}
+            </motion.div>
+          )}
         </AnimatePresence>
       </div>
 
@@ -136,6 +149,24 @@ export const HUD: React.FC = () => {
               <RoundDot active={roundsWon.player2 >= 1} />
               <RoundDot active={roundsWon.player2 >= 2} />
             </div>
+
+            {/* Punishment Training Alert Overlay */}
+            <AnimatePresence>
+              {punishAlert && (
+                <motion.div
+                  initial={{ opacity: 0, y: -20, scale: 0.8 }}
+                  animate={{ opacity: 1, y: 0, scale: 1.1 }}
+                  exit={{ opacity: 0, y: 20, scale: 0.8 }}
+                  className={`absolute top-16 left-1/2 -translate-x-1/2 px-4 py-1 border -skew-x-12 font-display text-xs md:text-sm font-black italic tracking-widest z-15 ${
+                    punishAlert === 'punished'
+                      ? 'bg-neon-green/90 text-black border-white shadow-neon-green'
+                      : 'bg-neon-red/90 text-white border-white shadow-neon-red animate-pulse'
+                  }`}
+                >
+                  {punishAlert.toUpperCase()}!
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
           
           {/* Player 2 Health */}
@@ -176,10 +207,10 @@ export const HUD: React.FC = () => {
         </button>
       )}
 
-      {/* Combo Counter Display */}
+      {/* Combo Counter & Frame Data Display */}
       <div className="flex justify-between w-full max-w-6xl mt-4 md:mt-8 px-4 md:px-8 z-10 pointer-events-none">
-        {/* P1 Combo */}
-        <div>
+        {/* P1 Combo & Frame Data */}
+        <div className="flex flex-col gap-3">
           <AnimatePresence>
             {player1Combo > 1 && (
               <motion.div
@@ -195,10 +226,25 @@ export const HUD: React.FC = () => {
               </motion.div>
             )}
           </AnimatePresence>
+
+          {p1FrameAdvantage !== null && (
+            <motion.div 
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="flex flex-col items-start p-2 rounded bg-black/60 border border-white/10 font-mono text-xs md:text-sm -skew-x-12 pointer-events-auto"
+            >
+              <span className={`font-black tracking-wider ${p1FrameAdvantage >= 0 ? 'text-neon-green' : 'text-neon-red animate-pulse'}`}>
+                ADV: {p1FrameAdvantage >= 0 ? `+${p1FrameAdvantage}` : p1FrameAdvantage}
+              </span>
+              <span className="text-[8px] text-white/50 uppercase tracking-widest mt-0.5">
+                {p1FrameAdvantage >= -5 ? 'SAFE' : 'UNSAFE (PUNISHABLE)'}
+              </span>
+            </motion.div>
+          )}
         </div>
 
-        {/* P2 Combo */}
-        <div>
+        {/* P2 Combo & Frame Data */}
+        <div className="flex flex-col gap-3 items-end">
           <AnimatePresence>
             {player2Combo > 1 && (
               <motion.div
@@ -214,6 +260,21 @@ export const HUD: React.FC = () => {
               </motion.div>
             )}
           </AnimatePresence>
+
+          {p2FrameAdvantage !== null && (
+            <motion.div 
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="flex flex-col items-end p-2 rounded bg-black/60 border border-white/10 font-mono text-xs md:text-sm skew-x-12 pointer-events-auto"
+            >
+              <span className={`font-black tracking-wider ${p2FrameAdvantage >= 0 ? 'text-neon-green' : 'text-neon-red animate-pulse'}`}>
+                ADV: {p2FrameAdvantage >= 0 ? `+${p2FrameAdvantage}` : p2FrameAdvantage}
+              </span>
+              <span className="text-[8px] text-white/50 uppercase tracking-widest mt-0.5">
+                {p2FrameAdvantage >= -5 ? 'SAFE' : 'UNSAFE (PUNISHABLE)'}
+              </span>
+            </motion.div>
+          )}
         </div>
       </div>
 
