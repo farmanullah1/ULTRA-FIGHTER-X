@@ -38,14 +38,14 @@ export const DEFAULT_CONTROLS_P1 = {
   right: 'KeyD',
   up: 'KeyW',
   down: 'KeyS',
-  punch: 'KeyB',
-  kick: 'KeyN',
-  heavyPunch: 'KeyM',
-  heavyKick: 'KeyP',
-  special: 'KeyJ',
-  super: 'KeyL',
-  block: 'KeyK',
-  dash: 'Space',
+  punch: 'KeyU',        // LP
+  kick: 'KeyJ',         // LK
+  heavyPunch: 'KeyI',   // HP
+  heavyKick: 'KeyK',    // HK
+  special: 'KeyO',      // SP
+  super: 'KeyP',        // EX
+  block: 'KeyL',        // BL
+  dash: 'Space',        // DS
 }
 
 export const DEFAULT_CONTROLS_P2 = {
@@ -53,12 +53,12 @@ export const DEFAULT_CONTROLS_P2 = {
   right: 'ArrowRight',
   up: 'ArrowUp',
   down: 'ArrowDown',
-  punch: 'Numpad4',
-  kick: 'Numpad5',
-  heavyPunch: 'Numpad6',
-  heavyKick: 'Numpad9',
-  special: 'Numpad1',
-  super: 'Numpad3',
-  block: 'Numpad2',
-  dash: 'Numpad0',
+  punch: 'Numpad7',     // LP
+  kick: 'Numpad4',      // LK
+  heavyPunch: 'Numpad8',// HP
+  heavyKick: 'Numpad5', // HK
+  special: 'Numpad9',   // SP
+  super: 'Numpad3',     // EX
+  block: 'Numpad6',     // BL
+  dash: 'Numpad0',      // DS
 }

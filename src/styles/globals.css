@@ -205,3 +205,15 @@ canvas {
   outline: 2px solid var(--neon-cyan);
   outline-offset: 2px;
 }
+
+/* Device rotation overlay classes */
+@keyframes rotatePhone {
+  0%, 15% { transform: rotate(0deg); }
+  45%, 70% { transform: rotate(-90deg); }
+  90%, 100% { transform: rotate(-90deg); }
+}
+
+.rotate-phone-animation {
+  animation: rotatePhone 3s cubic-bezier(0.65, 0, 0.35, 1) infinite;
+}
+

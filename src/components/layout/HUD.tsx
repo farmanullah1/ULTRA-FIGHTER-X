@@ -468,13 +468,15 @@ export const HUD: React.FC = () => {
           </div>
 
           {/* Right Side: Virtual Action Buttons Grid */}
-          <div className="pointer-events-auto grid grid-cols-3 gap-2 md:gap-3 w-48 md:w-60 h-32 md:h-40 justify-items-center items-center">
+          <div className="pointer-events-auto grid grid-cols-4 gap-2 md:gap-3 w-64 md:w-80 h-32 md:h-40 justify-items-center items-center">
             <TouchButton action="punch" color="border-neon-cyan/40 text-neon-cyan" handle={handleTouch} />
             <TouchButton action="heavyPunch" color="border-neon-magenta/40 text-neon-magenta" handle={handleTouch} />
             <TouchButton action="special" color="border-neon-green/40 text-neon-green" handle={handleTouch} />
+            <TouchButton action="super" color="border-neon-yellow/40 text-neon-yellow" handle={handleTouch} />
             <TouchButton action="kick" color="border-neon-cyan/40 text-neon-cyan" handle={handleTouch} />
             <TouchButton action="heavyKick" color="border-neon-red/40 text-neon-red" handle={handleTouch} />
-            <TouchButton action="super" color="border-neon-yellow/40 text-neon-yellow" handle={handleTouch} />
+            <TouchButton action="block" color="border-neon-orange/40 text-neon-orange" handle={handleTouch} />
+            <TouchButton action="dash" color="border-white/40 text-white" handle={handleTouch} />
           </div>
         </div>
       )}
@@ -552,7 +554,7 @@ const RoundDot: React.FC<{ active: boolean }> = ({ active }) => (
 
 // Mobile Action Buttons Component
 interface TouchButtonProps {
-  action: 'punch' | 'heavyPunch' | 'kick' | 'heavyKick' | 'special' | 'super'
+  action: 'punch' | 'heavyPunch' | 'kick' | 'heavyKick' | 'special' | 'super' | 'block' | 'dash'
   color: string
   handle: (act: string, pressed: boolean) => void
 }
@@ -613,6 +615,24 @@ const TouchButton: React.FC<TouchButtonProps> = ({ action, color, handle }) => {
               <path d="M50 15L62 42L90 45L68 63L75 90L50 75L25 90L32 63L10 45L38 42L50 15Z" stroke="currentColor" strokeWidth="2.5" />
             </svg>
             <span className="text-[8px] font-mono leading-none font-bold">EX</span>
+          </div>
+        )
+      case 'block': // BL (Block)
+        return (
+          <div className="flex flex-col items-center gap-0.5">
+            <svg className="w-5 h-5 fill-none" viewBox="0 0 100 100" stroke="currentColor" strokeWidth="6" xmlns="http://www.w3.org/2000/svg">
+              <path d="M50 15 C65 15, 80 20, 80 20 C80 20, 80 50, 75 65 C68 80, 50 88, 50 88 C50 88, 32 80, 25 65 C20 50, 20 20, 20 20 C20 20, 35 15, 50 15 Z" />
+            </svg>
+            <span className="text-[8px] font-mono leading-none font-bold">BL</span>
+          </div>
+        )
+      case 'dash': // DS (Dash)
+        return (
+          <div className="flex flex-col items-center gap-0.5">
+            <svg className="w-5 h-5 fill-current" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+              <path d="M25 25L55 50L25 75V25Z M50 25L80 50L50 75V25Z" />
+            </svg>
+            <span className="text-[8px] font-mono leading-none font-bold">DS</span>
           </div>
         )
       default:

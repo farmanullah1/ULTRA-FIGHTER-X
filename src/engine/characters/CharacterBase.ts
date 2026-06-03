@@ -37,6 +37,9 @@ export class CharacterBase {
   preJumpVelocityY: number = 0
   landingLagTimer: number = 0
   wasAirborne: boolean = false
+  hasDoubleJumped: boolean = false
+  hasAirDashed: boolean = false
+  airDashTimer: number = 0
 
   // Systemic combat scaling and states
   juggleCount: number = 0
@@ -200,6 +203,30 @@ export class CharacterBase {
       }
     }
 
+    // Update Air Dash timers & velocities (freezes vertical gravity temporarily)
+    if (this.airDashTimer > 0) {
+      if (this.currentMove) {
+        this.airDashTimer = 0
+        this.dashDirection = null
+      } else {
+        this.airDashTimer--
+        const speed = this.def.stats.dashSpeed * 1.25
+        const directionMult = this.dashDirection === 'forward' ? 1 : -1
+        this.body.velocity.x = (this.facingRight ? 1 : -1) * speed * directionMult
+        this.body.velocity.y = 0 // suspend gravity
+        this.currentAnimation = 'air-attack'
+        
+        if (this.airDashTimer % 2 === 0) {
+          this.onSpawnParticles?.('character-aura', this.body.position, this.def.colors.aura)
+        }
+        
+        if (this.airDashTimer === 0) {
+          this.body.velocity.x = 0
+          this.dashDirection = null
+        }
+      }
+    }
+
     // Sidewalk Z-axis movement
     if (this.isSidewalking && !this.currentMove) {
       const dirKey = this.sidewalkDir === 1 ? 'left' : 'right'
@@ -348,10 +375,18 @@ export class CharacterBase {
       this.currentAnimation = 'crouch'
       this.body.velocity.x = 0
       this.body.velocity.z = 0
+      this.hasDoubleJumped = false
+      this.hasAirDashed = false
+      this.airDashTimer = 0
       this.onSpawnParticles?.('dust-land', this.body.position, '#888888')
     }
     if (this.body.isAirborne) {
       this.wasAirborne = true
+    }
+    if (this.body.isGrounded && !this.body.isAirborne) {
+      this.hasDoubleJumped = false
+      this.hasAirDashed = false
+      this.airDashTimer = 0
     }
 
     // Knockdown landing check
@@ -393,7 +428,7 @@ export class CharacterBase {
     input: InputState,
     buffer: InputBuffer,
     frame: number,
-    _physics: PhysicsEngine,
+    physics: PhysicsEngine,
     inputManager: any
   ): void {
     const { walkSpeed, jumpHeight } = this.def.stats
@@ -449,6 +484,55 @@ export class CharacterBase {
 
     const forwardKey = this.facingRight ? 'right' : 'left'
     const backwardKey = this.facingRight ? 'left' : 'right'
+
+    // Airborne Double Jump & Air Dash checks
+    if (this.body.isAirborne) {
+      const lastIdx = buffer.frames.length - 1
+      const upJustPressed = lastIdx > 0 && input.up && !buffer.frames[lastIdx - 1].state.up
+
+      // 1. Double Jump
+      if (upJustPressed && !this.hasDoubleJumped && this.airDashTimer === 0) {
+        this.hasDoubleJumped = true
+        physics.jump(this.body, jumpHeight * 0.8)
+        this.currentAnimation = 'jump'
+        this.onSpawnParticles?.('character-aura', this.body.position, this.def.colors.aura)
+        audioManager.playSFX('swipe', 0.5)
+        return
+      }
+
+      // 2. Air Dash
+      if (!this.hasAirDashed && this.airDashTimer === 0) {
+        let wantsAirDashForward = false
+        let wantsAirDashBackward = false
+
+        if (this.checkDoubleTap(buffer, forwardKey) || (input.dash && input[forwardKey])) {
+          wantsAirDashForward = true
+        } else if (this.checkDoubleTap(buffer, backwardKey) || (input.dash && input[backwardKey])) {
+          wantsAirDashBackward = true
+        }
+
+        if (wantsAirDashForward) {
+          this.hasAirDashed = true
+          this.airDashTimer = 15
+          this.dashDirection = 'forward'
+          this.body.velocity.y = 0
+          this.currentAnimation = 'air-attack'
+          this.onSpawnParticles?.('dust-land', this.body.position, this.def.colors.aura)
+          audioManager.playSFX('swipe', 0.5)
+          return
+        }
+        if (wantsAirDashBackward) {
+          this.hasAirDashed = true
+          this.airDashTimer = 15
+          this.dashDirection = 'backward'
+          this.body.velocity.y = 0
+          this.currentAnimation = 'air-attack'
+          this.onSpawnParticles?.('dust-land', this.body.position, this.def.colors.aura)
+          audioManager.playSFX('swipe', 0.5)
+          return
+        }
+      }
+    }
 
     // 4. Jump (Up key or Space/Dash key in neutral)
     const wantsToJump = input.up || (input.dash && !input[forwardKey] && !input[backwardKey])
@@ -542,7 +626,7 @@ export class CharacterBase {
     }
 
     // Basic movement (Standard WASD / D-Pad: Left/Right walks, Down crouches)
-    if (!this.currentMove) {
+    if (!this.currentMove && this.airDashTimer === 0) {
       if (input.down) {
         this.body.velocity.x = 0
         this.currentAnimation = 'crouch'

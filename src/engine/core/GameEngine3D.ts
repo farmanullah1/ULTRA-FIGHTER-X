@@ -1,7 +1,7 @@
 import { 
   Engine, Scene, ArcRotateCamera, Vector3, HemisphericLight, DirectionalLight, 
   ShadowGenerator, DefaultRenderingPipeline, Color4, SSAO2RenderingPipeline, 
-  CubeTexture, MeshBuilder, StandardMaterial, Color3, AbstractMesh 
+  CubeTexture, MeshBuilder, StandardMaterial, Color3, AbstractMesh, PointLight
 } from '@babylonjs/core'
 import { AssetManager } from './AssetManager'
 import { PhysicsEngine } from './PhysicsEngine'
@@ -80,6 +80,9 @@ export class GameEngine3D {
   // Local combo timers to prevent Zustand store mutations
   private p1ComboTimer: number = 0
   private p2ComboTimer: number = 0
+
+  private superPointLight: PointLight | null = null
+  private superLightOwner: CharacterBase | null = null
 
   // Event listener refs for clean disposal
   private resizeListener: () => void
@@ -437,7 +440,7 @@ export class GameEngine3D {
     this.isSuperFlashActive = true
     this.superFlashTimer = 60
     
-    this.scene.lights.forEach(l => { if (l.name !== 'hemiLight') l.intensity *= 0.2 })
+    this.scene.lights.forEach(l => { if (l.name !== 'hemiLight' && l.name !== `superLight_${character.id}`) l.intensity *= 0.2 })
     
     this.audio.playSFX('super_activate')
     this.particles.spawn('super-explosion', character.body.position as any, character.def.colors.aura)
@@ -446,6 +449,27 @@ export class GameEngine3D {
     // Trigger haptic rumble on supported devices
     if ('vibrate' in navigator) {
       navigator.vibrate([100, 50, 100])
+    }
+
+    // Dispose of any existing super light
+    if (this.superPointLight) {
+      this.superPointLight.dispose()
+      this.superPointLight = null
+    }
+
+    // Spawn a tracking PointLight matching character's aura color
+    try {
+      const auraColor = Color3.FromHexString(character.def.colors.aura)
+      const startPos = new Vector3(character.body.position.x, character.body.position.y + 1.2, character.body.position.z)
+      const pointLight = new PointLight(`superLight_${character.id}`, startPos, this.scene)
+      pointLight.diffuse = auraColor
+      pointLight.specular = auraColor
+      pointLight.intensity = 18.0
+      pointLight.range = 10.0
+      this.superPointLight = pointLight
+      this.superLightOwner = character
+    } catch (e) {
+      console.warn("Failed to create super PointLight:", e)
     }
   }
 
@@ -549,9 +573,27 @@ export class GameEngine3D {
     // Handle Super Flash
     if (this.superFlashTimer > 0) {
       this.superFlashTimer--
+
+      // Track PointLight position and pulse intensity
+      if (this.superPointLight && this.superLightOwner) {
+        this.superPointLight.position.set(
+          this.superLightOwner.body.position.x,
+          this.superLightOwner.body.position.y + 1.2,
+          this.superLightOwner.body.position.z
+        )
+        this.superPointLight.intensity = 18.0 + Math.sin(frame * 0.35) * 5.0
+      }
+
       if (this.superFlashTimer <= 0) {
         this.isSuperFlashActive = false
-        this.scene.lights.forEach(l => { if (l.name !== 'hemiLight') l.intensity *= 5 })
+        this.scene.lights.forEach(l => { if (l.name !== 'hemiLight' && !l.name.startsWith('superLight_')) l.intensity *= 5.0 })
+
+        // Clean up tracking light
+        if (this.superPointLight) {
+          this.superPointLight.dispose()
+          this.superPointLight = null
+          this.superLightOwner = null
+        }
       }
       this.updateCamera()
       return
@@ -967,6 +1009,30 @@ export class GameEngine3D {
       }
     }
 
+    // Smoothly decay chromatic aberration and bloom hit-spikes
+    if (this.defaultPipeline) {
+      const isUltra = useSettingsStore.getState().graphicsQuality === 'ultra'
+      const targetAberration = isUltra ? 0.5 : 0.0
+      
+      // Decay aberration
+      if (this.defaultPipeline.chromaticAberrationEnabled) {
+        const curAmount = this.defaultPipeline.chromaticAberration.aberrationAmount
+        const nextAmount = curAmount * 0.85 + targetAberration * 0.15
+        this.defaultPipeline.chromaticAberration.aberrationAmount = nextAmount
+        
+        // Turn off chromatic aberration on non-ultra settings when it falls back to ~0
+        if (!isUltra && nextAmount < 0.05) {
+          this.defaultPipeline.chromaticAberrationEnabled = false
+          this.defaultPipeline.chromaticAberration.aberrationAmount = 0
+        }
+      }
+
+      // Decay bloom
+      if (this.defaultPipeline.bloomEnabled) {
+        this.defaultPipeline.bloomWeight = this.defaultPipeline.bloomWeight * 0.88 + 0.4 * 0.12
+      }
+    }
+
     this.updateCamera()
   }
 
@@ -1110,6 +1176,12 @@ export class GameEngine3D {
     this.battleState = 'starting'
     this.stateTimer = 180
     this.roundTime = 99
+
+    if (this.superPointLight) {
+      this.superPointLight.dispose()
+      this.superPointLight = null
+      this.superLightOwner = null
+    }
     this.player1.health = 1000
     this.player2.health = 1000
     this.player1.body.position.x = -3
@@ -1252,6 +1324,19 @@ export class GameEngine3D {
       const isHeavy = attacker.currentMove.id.includes('heavy') || attacker.currentMove.id === 'punch-uppercut' || attacker.currentMove.id === 'punch-hook'
       const isCounterHit = !victim.isBlocking && victim.currentMove !== null && victim.moveFrame <= (victim.currentMove.startup + victim.currentMove.active)
       const isSuper = attacker.currentMove.type === 'super'
+
+      // Post-processing Hit Spikes
+      if (this.defaultPipeline) {
+        this.defaultPipeline.chromaticAberrationEnabled = true
+        const isBlock = victim.isBlocking
+        const spikeAberration = isSuper ? 12.0 : isHeavy ? 6.0 : isBlock ? 1.5 : 3.0
+        const spikeBloom = isSuper ? 3.0 : isHeavy ? 1.5 : isBlock ? 0.6 : 0.9
+        
+        this.defaultPipeline.chromaticAberration.aberrationAmount = spikeAberration
+        if (this.defaultPipeline.bloomEnabled) {
+          this.defaultPipeline.bloomWeight = spikeBloom
+        }
+      }
       
       if (victim.isBlocking) { 
         let blockstun = hit.blockstun
@@ -1414,6 +1499,12 @@ export class GameEngine3D {
     this.engine.stopRenderLoop() 
     this.audio.stopMusic()
     this.clearHitboxVisualization()
+
+    if (this.superPointLight) {
+      this.superPointLight.dispose()
+      this.superPointLight = null
+      this.superLightOwner = null
+    }
 
     // Clean up event listeners
     window.removeEventListener('resize', this.resizeListener)

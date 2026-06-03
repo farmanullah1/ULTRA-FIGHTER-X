@@ -52,6 +52,6 @@ export const useSettingsStore = create<SettingsState>()(
       toggleFPS: () => set((s) => { s.showFPS = !s.showFPS }),
       resetToDefaults: () => set(() => ({ ...defaults })),
     })),
-    { name: 'ufx-settings' }
+    { name: 'ufx-settings-v2' }
   )
 )

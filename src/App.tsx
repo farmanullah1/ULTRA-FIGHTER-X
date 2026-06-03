@@ -10,6 +10,7 @@ import { SettingsMenu } from '@components/menus/SettingsMenu'
 import { PauseMenu } from '@components/game/PauseMenu'
 import { AnimatePresence, motion } from 'framer-motion'
 import { audioManager } from '@engine/audio/AudioManager'
+import { OrientationGuard } from '@components/layout/OrientationGuard'
 import './styles/globals.css'
 
 function App() {
@@ -190,10 +191,10 @@ function App() {
                   className="flex flex-wrap gap-3 text-[10px] font-mono text-white/30 mt-2"
                 >
                   <span className="border border-white/15 px-2 py-0.5 rounded">WASD / ARROWS — Move</span>
-                  <span className="border border-white/15 px-2 py-0.5 rounded">Z — Punch</span>
-                  <span className="border border-white/15 px-2 py-0.5 rounded">X — Kick</span>
-                  <span className="border border-white/15 px-2 py-0.5 rounded">A — Heavy Punch</span>
-                  <span className="border border-white/15 px-2 py-0.5 rounded">S — Heavy Kick</span>
+                  <span className="border border-white/15 px-2 py-0.5 rounded">U / J — Light Punch / Light Kick</span>
+                  <span className="border border-white/15 px-2 py-0.5 rounded">I / K — Heavy Punch / Heavy Kick</span>
+                  <span className="border border-white/15 px-2 py-0.5 rounded">O / L — Special / Block</span>
+                  <span className="border border-white/15 px-2 py-0.5 rounded">P / SPACE — Super / Dash</span>
                 </motion.div>
               </div>
 
@@ -241,6 +242,9 @@ function App() {
       {/* Screen Effects Overlay */}
       <div className="fixed inset-0 pointer-events-none z-50 bg-cyber-grid opacity-10" />
       <div className="fixed inset-0 pointer-events-none z-50 bg-scanline" />
+      
+      {/* Orientation lock & rotation prompt overlay */}
+      <OrientationGuard />
     </div>
   )
 }
