@@ -545,34 +545,55 @@ export class CharacterBase {
       this.currentAnimation = 'crouch'
     }
 
-    // Basic attacks
-    if (input.punch) {
-      const isSidestepping = this.sidestepTimer > 0 || this.isSidewalking
-      const isCrouching = input.down || this.currentAnimation === 'crouch'
-      
-      if (isSidestepping) {
-        this.triggerAttack('punch-hook', frame)
-      } else if (isCrouching) {
-        this.triggerAttack('punch-uppercut', frame)
-      } else {
-        this.triggerAttack('punch-light', frame)
+    // Basic attacks (Street Fighter style: air, crouch, and standing attack states)
+    const isAirborne = this.body.isAirborne
+    const isCrouching = input.down || this.currentAnimation === 'crouch'
+    const isSidestepping = this.sidestepTimer > 0 || this.isSidewalking
+
+    if (isAirborne) {
+      if (input.punch) {
+        this.triggerAttack('jump-punch', frame)
+      } else if (input.kick) {
+        this.triggerAttack('jump-kick', frame)
+      } else if (input.heavyPunch) {
+        this.triggerAttack('jump-punch-heavy', frame)
+      } else if (input.heavyKick) {
+        this.triggerAttack('jump-kick-heavy', frame)
       }
-    }
-    if (input.kick) {
-      this.triggerAttack('kick-light', frame)
-    }
-    if (input.heavyPunch) {
-      this.triggerAttack('punch-heavy', frame) // Consumes 50 meter inside triggerAttack
-    }
-    if (input.heavyKick) {
-      this.triggerAttack('kick-heavy', frame)
+    } else {
+      if (input.punch) {
+        if (isSidestepping) {
+          this.triggerAttack('punch-hook', frame)
+        } else if (isCrouching) {
+          this.triggerAttack('punch-uppercut', frame)
+        } else {
+          this.triggerAttack('punch-light', frame)
+        }
+      } else if (input.kick) {
+        if (isCrouching) {
+          this.triggerAttack('kick-crouch-light', frame)
+        } else {
+          this.triggerAttack('kick-light', frame)
+        }
+      } else if (input.heavyPunch) {
+        this.triggerAttack('punch-heavy', frame)
+      } else if (input.heavyKick) {
+        if (isCrouching) {
+          this.triggerAttack('kick-crouch-heavy', frame)
+        } else {
+          this.triggerAttack('kick-heavy', frame)
+        }
+      }
     }
 
     // Block
     this.isBlocking = input.block && this.body.isGrounded
+    if (this.isBlocking && !this.currentMove) {
+      this.currentAnimation = input.down ? 'crouch-block' : 'block'
+    }
 
     // Idle fallback
-    if (!input.up && !input.down && !input.left && !input.right && this.body.isGrounded && !this.currentMove && !this.isSidewalking) {
+    if (!input.up && !input.down && !input.left && !input.right && !input.block && this.body.isGrounded && !this.currentMove && !this.isSidewalking) {
       this.currentAnimation = 'idle'
     }
   }
@@ -722,7 +743,37 @@ export class CharacterBase {
                     id: 'punch-uppercut', name: 'Uppercut', input: 'B', inputSequence: [], damage: 70, meterGain: 20, meterCost: 0, cancelable: false, invincible: false, startup: 8, active: 4, recovery: 6, onHit: 15, onBlock: -6, animationState: 'special-1', type: 'heavy-punch',
                     hitboxes: [{ frameStart: 8, frameEnd: 12, x: 0.5, y: 0.8, z: 0, width: 0.8, height: 0.8, depth: 0.6, type: 'attack', damage: 70, knockback: { x: 0.2, y: 0.52, z: 0 } }]
                   } as Move
-                : this.def.moves.find(m => m.id === overrideType))))))
+                : (overrideType === 'kick-crouch-light'
+                  ? {
+                      id: 'kick-light', name: 'Crouching Light Kick', input: 'LK', inputSequence: [], damage: 20, meterGain: 10, meterCost: 0, cancelable: true, invincible: false, startup: 4, active: 4, recovery: 5, onHit: 4, onBlock: 0, animationState: 'kick-light', type: 'light-kick',
+                      hitboxes: [{ frameStart: 4, frameEnd: 8, x: 0.6, y: 0.2, z: 0, width: 0.7, height: 0.25, depth: 0.4, type: 'attack', damage: 20 }]
+                    } as Move
+                  : (overrideType === 'kick-crouch-heavy'
+                    ? {
+                        id: 'kick-heavy', name: 'Crouching Sweep', input: 'HK', inputSequence: [], damage: 65, meterGain: 20, meterCost: 0, cancelable: false, invincible: false, startup: 9, active: 5, recovery: 18, onHit: 12, onBlock: -7, animationState: 'kick-heavy', type: 'heavy-kick',
+                        hitboxes: [{ frameStart: 9, frameEnd: 14, x: 0.75, y: 0.15, z: 0, width: 1.0, height: 0.25, depth: 0.4, type: 'attack', damage: 65, knockback: { x: 0.5, y: 0.35, z: 0 } }]
+                      } as Move
+                    : (overrideType === 'jump-punch'
+                      ? {
+                          id: 'punch-light', name: 'Jumping Punch', input: 'LP', inputSequence: [], damage: 30, meterGain: 10, meterCost: 0, cancelable: false, invincible: false, startup: 5, active: 4, recovery: 6, onHit: 8, onBlock: 2, animationState: 'air-attack', type: 'light-punch',
+                          hitboxes: [{ frameStart: 5, frameEnd: 9, x: 0.5, y: 0.8, z: 0, width: 0.6, height: 0.4, depth: 0.4, type: 'attack', damage: 30 }]
+                        } as Move
+                      : (overrideType === 'jump-kick'
+                        ? {
+                            id: 'kick-light', name: 'Jumping Kick', input: 'LK', inputSequence: [], damage: 35, meterGain: 10, meterCost: 0, cancelable: false, invincible: false, startup: 5, active: 5, recovery: 7, onHit: 9, onBlock: 3, animationState: 'air-attack', type: 'light-kick',
+                            hitboxes: [{ frameStart: 5, frameEnd: 10, x: 0.6, y: 0.6, z: 0, width: 0.7, height: 0.4, depth: 0.4, type: 'attack', damage: 35 }]
+                          } as Move
+                        : (overrideType === 'jump-punch-heavy'
+                          ? {
+                              id: 'punch-heavy', name: 'Jumping Heavy Punch', input: 'HP', inputSequence: [], damage: 60, meterGain: 20, meterCost: 0, cancelable: false, invincible: false, startup: 7, active: 5, recovery: 10, onHit: 10, onBlock: 0, animationState: 'air-attack', type: 'heavy-punch',
+                              hitboxes: [{ frameStart: 7, frameEnd: 12, x: 0.6, y: 0.7, z: 0, width: 0.8, height: 0.5, depth: 0.5, type: 'attack', damage: 60, knockback: { x: 0.4, y: -0.15, z: 0 } }]
+                            } as Move
+                          : (overrideType === 'jump-kick-heavy'
+                            ? {
+                                id: 'kick-heavy', name: 'Jumping Heavy Kick', input: 'HK', inputSequence: [], damage: 70, meterGain: 25, meterCost: 0, cancelable: false, invincible: false, startup: 8, active: 6, recovery: 12, onHit: 12, onBlock: -2, animationState: 'air-attack', type: 'heavy-kick',
+                                hitboxes: [{ frameStart: 8, frameEnd: 14, x: 0.7, y: 0.5, z: 0, width: 0.9, height: 0.5, depth: 0.5, type: 'attack', damage: 70, knockback: { x: 0.65, y: 0.4, z: 0 } }]
+                              } as Move
+                            : this.def.moves.find(m => m.id === overrideType))))))))))))
 
     if (move && !this.currentMove) {
       // Power Attack consumes 50 meter
@@ -1050,26 +1101,94 @@ export class CharacterBase {
       }
     } 
     else if (animState === 'kick-light') {
+      const isCrouchLight = this.currentMove?.id === 'kick-crouch-light'
       const duration = this.currentMove ? (this.currentMove.startup + this.currentMove.active + this.currentMove.recovery) : 12
       const progress = this.moveFrame / duration
       const ext = Math.sin(progress * Math.PI)
 
-      const leadLeg = this.facingRight ? legR : legL
-      leadLeg.rotation.x = -Math.PI / 3 * ext
-      leadLeg.position.z = 0.25 * ext
+      if (isCrouchLight) {
+        body.position.y = defBodyY - 0.3
+        head.position.y = defHeadY - 0.3
+        legL.position.y = 0.25
+        legR.position.y = 0.25
+        
+        const leadLeg = this.facingRight ? legR : legL
+        const backLeg = this.facingRight ? legL : legR
+        
+        leadLeg.rotation.x = -Math.PI / 2.8 * ext
+        leadLeg.position.z = 0.4 * ext
+        backLeg.rotation.x = -0.4
+      } else {
+        const leadLeg = this.facingRight ? legR : legL
+        leadLeg.rotation.x = -Math.PI / 3 * ext
+        leadLeg.position.z = 0.25 * ext
+      }
     } 
     else if (animState === 'kick-heavy') {
+      const isCrouchHeavy = this.currentMove?.id === 'kick-crouch-heavy'
       const duration = this.currentMove ? (this.currentMove.startup + this.currentMove.active + this.currentMove.recovery) : 20
       const progress = this.moveFrame / duration
-      const spin = progress * Math.PI * 2
       const ext = Math.sin(progress * Math.PI)
 
-      // Torso spin
-      body.rotation.y = this.facingRight ? spin : -spin
+      if (isCrouchHeavy) {
+        const spin = progress * Math.PI * 2
+        body.position.y = defBodyY - 0.45
+        head.position.y = defHeadY - 0.45
+        
+        // Sweep spin body tilt
+        body.rotation.y = this.facingRight ? spin : -spin
+        
+        const leadLeg = this.facingRight ? legR : legL
+        leadLeg.rotation.x = -Math.PI / 2.0 * ext
+        leadLeg.position.y = 0.15
+        leadLeg.position.z = 0.6 * ext
+      } else {
+        const spin = progress * Math.PI * 2
+        // Torso spin
+        body.rotation.y = this.facingRight ? spin : -spin
 
-      const leadLeg = this.facingRight ? legR : legL
-      leadLeg.rotation.x = -Math.PI / 2.2 * ext
-      leadLeg.position.y = 0.4 + 0.25 * ext
+        const leadLeg = this.facingRight ? legR : legL
+        leadLeg.rotation.x = -Math.PI / 2.2 * ext
+        leadLeg.position.y = 0.4 + 0.25 * ext
+      }
+    }
+    else if (animState === 'air-attack') {
+      const moveId = this.currentMove?.id || ''
+      const duration = this.currentMove ? (this.currentMove.startup + this.currentMove.active + this.currentMove.recovery) : 15
+      const progress = this.moveFrame / duration
+      const ext = Math.sin(progress * Math.PI)
+
+      if (moveId === 'jump-punch') {
+        // Jump punch: Torso tilts down, arm extends down-forward
+        body.rotation.x = 0.25 * ext
+        const leadArm = this.facingRight ? armR : armL
+        leadArm.rotation.x = -Math.PI / 2.5 * ext
+        leadArm.rotation.z = (this.facingRight ? 0.3 : -0.3) * ext
+        leadArm.position.z = 0.4 * ext
+      } else if (moveId === 'jump-kick') {
+        // Jump kick: Torso tilts back, leg extends down-forward (flying kick)
+        body.rotation.x = -0.15 * ext
+        const leadLeg = this.facingRight ? legR : legL
+        leadLeg.rotation.x = -Math.PI / 2.5 * ext
+        leadLeg.position.z = 0.5 * ext
+        
+        const backLeg = this.facingRight ? legL : legR
+        backLeg.rotation.x = 0.3 * ext
+      } else if (moveId === 'jump-punch-heavy') {
+        // Heavy jumping hammerfist
+        body.rotation.x = 0.35 * ext
+        body.rotation.y = (this.facingRight ? 0.2 : -0.2) * ext
+        const leadArm = this.facingRight ? armR : armL
+        leadArm.rotation.x = -Math.PI * 0.7 * ext
+        leadArm.position.z = 0.5 * ext
+      } else if (moveId === 'jump-kick-heavy') {
+        // Drop kick style (both legs out)
+        body.rotation.x = -0.35 * ext
+        legL.rotation.x = -Math.PI / 2.3 * ext
+        legR.rotation.x = -Math.PI / 2.3 * ext
+        legL.position.z = 0.55 * ext
+        legR.position.z = 0.55 * ext
+      }
     } 
     else if (animState.startsWith('special-')) {
       const isUppercut = this.currentMove?.id === 'punch-uppercut'

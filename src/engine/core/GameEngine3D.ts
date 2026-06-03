@@ -716,6 +716,16 @@ export class GameEngine3D {
     if (!this.player1.currentMove && !this.player1.isInHitstun) this.player1.facingRight = this.player1.body.position.x < this.player2.body.position.x
     if (!this.player2.currentMove && !this.player2.isInHitstun) this.player2.facingRight = this.player2.body.position.x < this.player1.body.position.x
 
+    // Sync input buffers with actual generated/used inputs (critical for AI combo buffering)
+    const p1Buf = this.input.getP1Buffer()
+    if (p1Buf.frames.length > 0) {
+      p1Buf.frames[p1Buf.frames.length - 1].state = { ...effectiveP1Input }
+    }
+    const p2Buf = this.input.getP2Buffer()
+    if (p2Buf.frames.length > 0) {
+      p2Buf.frames[p2Buf.frames.length - 1].state = { ...effectiveP2Input }
+    }
+
     this.player1.update(effectiveP1Input, this.input.getP1Buffer(), frame, this.physics, this.input, this.player2.body.position)
     this.player2.update(effectiveP2Input, this.input.getP2Buffer(), frame, this.physics, this.input, this.player1.body.position)
 
