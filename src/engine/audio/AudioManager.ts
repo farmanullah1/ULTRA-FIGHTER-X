@@ -17,6 +17,9 @@ export class AudioManager {
 
   private initContext(): void {
     if (this.context) return
+    if (typeof window !== 'undefined' && !(window as any).__hasUserGesture) {
+      return
+    }
     
     try {
       const AudioCtx = window.AudioContext || (window as any).webkitAudioContext

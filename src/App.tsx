@@ -16,18 +16,25 @@ function App() {
   // Start menu music on first user click or key press to obey browser policies
   useEffect(() => {
     const handleInteraction = () => {
+      (window as any).__hasUserGesture = true
       audioManager.resume()
       if (screen !== 'battle') {
         audioManager.startMenuMusic()
       }
       window.removeEventListener('click', handleInteraction)
       window.removeEventListener('keydown', handleInteraction)
+      window.removeEventListener('touchstart', handleInteraction)
+      window.removeEventListener('mousedown', handleInteraction)
     }
     window.addEventListener('click', handleInteraction)
     window.addEventListener('keydown', handleInteraction)
+    window.addEventListener('touchstart', handleInteraction)
+    window.addEventListener('mousedown', handleInteraction)
     return () => {
       window.removeEventListener('click', handleInteraction)
       window.removeEventListener('keydown', handleInteraction)
+      window.removeEventListener('touchstart', handleInteraction)
+      window.removeEventListener('mousedown', handleInteraction)
     }
   }, [screen])
 
