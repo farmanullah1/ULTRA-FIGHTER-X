@@ -32,6 +32,12 @@ export class CharacterBase {
   dashTimer: number = 0
   dashDirection: 'forward' | 'backward' | null = null
 
+  // Jump weight & Landing weight
+  preJumpTimer: number = 0
+  preJumpVelocityY: number = 0
+  landingLagTimer: number = 0
+  wasAirborne: boolean = false
+
   // Systemic combat scaling and states
   juggleCount: number = 0
   comboHitsReceived: number = 0
@@ -124,6 +130,28 @@ export class CharacterBase {
     }
     this.body.isFrozen = false
 
+    // Update landing lag
+    if (this.landingLagTimer > 0) {
+      this.landingLagTimer--
+    }
+
+    // Update pre-jump squat
+    if (this.preJumpTimer > 0) {
+      this.preJumpTimer--
+      if (this.preJumpTimer === 0) {
+        physics.jump(this.body, this.preJumpVelocityY)
+        this.currentAnimation = 'jump'
+      } else {
+        this.body.velocity.x = 0
+        this.body.velocity.z = 0
+        this.currentAnimation = 'crouch'
+        physics.update(this.body)
+        this.update3DNode(opponentPos)
+        this.updateAnimation()
+        return
+      }
+    }
+
     // Update Overdrive Timers
     if (this.overdriveTimer > 0) {
       this.overdriveTimer--
@@ -159,6 +187,12 @@ export class CharacterBase {
       const directionMult = this.dashDirection === 'forward' ? 1 : -1
       this.body.velocity.x = (this.facingRight ? 1 : -1) * speed * directionMult
       this.currentAnimation = this.dashDirection === 'forward' ? 'dash-forward' : 'dash-backward'
+      
+      // Spawn dash dust step particles continuously
+      if (this.dashTimer % 3 === 0) {
+        this.onSpawnParticles?.('dust-step', this.body.position, '#888888')
+      }
+      
       if (this.dashTimer === 0) {
         this.body.velocity.x = 0
         this.dashDirection = null
@@ -272,6 +306,22 @@ export class CharacterBase {
       }
     }
 
+    // Special / Super Command Canceling checks (Street Fighter Style)
+    if (this.currentMove && !isStunned && !this.isKnockedDown) {
+      let allowedToCancel = false
+      if (this.hasLandedHit) {
+        if (this.currentMove.cancelable && this.currentMove.type !== 'special' && this.currentMove.type !== 'super') {
+          allowedToCancel = true
+        } else if (this.currentMove.type === 'special' && (this.meter >= 1000 || this.isOverdriveActive)) {
+          allowedToCancel = true
+        }
+      }
+
+      if (allowedToCancel) {
+        this.checkCancelInputs(input, inputBuffer, frame, physics, inputManager)
+      }
+    }
+
     if (!isStunned && !this.isKnockedDown && this.dashTimer === 0) {
       this.processInput(input, inputBuffer, frame, physics, inputManager)
     }
@@ -290,6 +340,19 @@ export class CharacterBase {
     }
 
     physics.update(this.body)
+
+    // Landing lag detection
+    if (this.wasAirborne && this.body.isGrounded && !this.body.isAirborne) {
+      this.landingLagTimer = 2
+      this.wasAirborne = false
+      this.currentAnimation = 'crouch'
+      this.body.velocity.x = 0
+      this.body.velocity.z = 0
+      this.onSpawnParticles?.('dust-land', this.body.position, '#888888')
+    }
+    if (this.body.isAirborne) {
+      this.wasAirborne = true
+    }
 
     // Knockdown landing check
     const landed = this.body.isGrounded && !this.body.isAirborne && (this.body.velocity.y <= 0) && (this.isInHitstun && this.initialHitstun > 25)
@@ -330,10 +393,20 @@ export class CharacterBase {
     input: InputState,
     buffer: InputBuffer,
     frame: number,
-    physics: PhysicsEngine,
+    _physics: PhysicsEngine,
     inputManager: any
   ): void {
     const { walkSpeed, jumpHeight } = this.def.stats
+
+    if (this.landingLagTimer > 0) {
+      this.isBlocking = input.block && this.body.isGrounded
+      if (this.isBlocking) {
+        this.currentAnimation = 'block'
+      } else {
+        this.currentAnimation = 'crouch'
+      }
+      return
+    }
 
     if (this.currentMove) return
 
@@ -403,9 +476,10 @@ export class CharacterBase {
     }
 
     // 4. Short Hop / Jump (Space / input.dash)
-    if (input.dash && this.body.isGrounded) {
-      physics.jump(this.body, jumpHeight * 0.7) // short hop
-      this.currentAnimation = 'jump'
+    if (input.dash && this.body.isGrounded && this.preJumpTimer === 0) {
+      this.preJumpTimer = 3
+      this.preJumpVelocityY = jumpHeight * 0.7
+      this.currentAnimation = 'crouch'
       return
     }
 
@@ -500,6 +574,73 @@ export class CharacterBase {
     // Idle fallback
     if (!input.up && !input.down && !input.left && !input.right && this.body.isGrounded && !this.currentMove && !this.isSidewalking) {
       this.currentAnimation = 'idle'
+    }
+  }
+
+  private checkCancelInputs(
+    input: InputState,
+    buffer: InputBuffer,
+    frame: number,
+    _physics: PhysicsEngine,
+    inputManager: any
+  ): void {
+    // 1. Super / Rage Art (cinematic supers)
+    if (input.super && input.heavyPunch && (this.meter >= 1000 || this.isOverdriveActive)) {
+      this.currentMove = null
+      this.triggerAttack('super-storm', frame)
+      return
+    }
+
+    // 2. Special Moves via buttons
+    if (input.super) {
+      if (input.punch) {
+        this.currentMove = null
+        this.triggerAttack('special-bolt', frame, false)
+        return
+      }
+      if (input.kick) {
+        this.currentMove = null
+        this.triggerAttack('special-kick', frame, false)
+        return
+      }
+    }
+
+    // 3. EX Special Moves via buttons
+    if (input.special) {
+      if (input.punch) {
+        this.currentMove = null
+        this.triggerAttack('special-bolt', frame, true)
+        return
+      }
+      if (input.kick) {
+        this.currentMove = null
+        this.triggerAttack('special-kick', frame, true)
+        return
+      }
+    }
+
+    // 4. Command Inputs (Motion sequences)
+    if (this.currentMove && this.currentMove.type !== 'special') {
+      const sortedMoves = [...this.def.moves].sort((a, b) => b.inputSequence.length - a.inputSequence.length)
+      for (const move of sortedMoves) {
+        if (move.inputSequence.length > 1 && move.type === 'special') {
+          const adjustedSequence = move.inputSequence.map(token => {
+            if (!this.facingRight) {
+              if (token === 'F') return 'B'
+              if (token === 'B') return 'F'
+              if (token === 'DF') return 'DB'
+              if (token === 'DB') return 'DF'
+            }
+            return token
+          })
+
+          if (inputManager.checkInputSequence(buffer, adjustedSequence)) {
+            this.currentMove = null
+            this.triggerAttack(move.id, frame)
+            return
+          }
+        }
+      }
     }
   }
 
@@ -710,7 +851,28 @@ export class CharacterBase {
 
       // Spawn golden EX particle trails
       if (this.isEXActive && this.moveFrame % 3 === 0) {
-        this.onSpawnParticles?.('hit-spark', { ...this.body.position, y: this.body.position.y + 1.0 } as any, '#FFAA00')
+        this.onSpawnParticles?.('hit-spark-medium', { ...this.body.position, y: this.body.position.y + 1.0 } as any, '#FFAA00')
+      }
+
+      // Spawn active attack trails (Street Fighter Style)
+      if (this.moveFrame >= this.currentMove.startup && this.moveFrame <= this.currentMove.startup + this.currentMove.active) {
+        const isPunch = this.currentMove.id.includes('punch') || this.currentMove.id.includes('jab') || this.currentMove.id.includes('hook') || this.currentMove.id.includes('uppercut')
+        const isKick = this.currentMove.id.includes('kick') || this.currentMove.id.includes('sweep') || this.currentMove.id.includes('slide')
+        
+        let limb: AbstractMesh | null = null
+        if (isPunch) {
+          limb = this.facingRight ? this.getPart('armR') : this.getPart('armL')
+        } else if (isKick) {
+          limb = this.facingRight ? this.getPart('legR') : this.getPart('legL')
+        }
+
+        if (limb) {
+          const absolutePos = limb.getAbsolutePosition()
+          this.onSpawnParticles?.('character-aura', absolutePos, this.def.colors.aura)
+          if (this.moveFrame % 2 === 0) {
+            this.onSpawnParticles?.('hit-spark-light', absolutePos, this.def.colors.primary)
+          }
+        }
       }
       
       // Spawn projectile on first active frame

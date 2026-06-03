@@ -1358,20 +1358,41 @@ export class GameEngine3D {
     diff = Math.atan2(Math.sin(diff), Math.cos(diff))
     this.camera.alpha += diff * 0.08
 
+    let targetRadius = 12.0
     if (this.isSuperFlashActive) {
       const activePlayer = this.player1.currentMove?.type === 'super' ? this.player1 : this.player2
       targetPos.copyFrom(activePlayer.body.position as any)
-      targetPos.y += 1.5
-      this.camera.radius = 5.5
+      targetPos.y += 1.3 // Focus slightly lower towards torso
+      targetRadius = 4.8 // Close-up dramatic zoom for supers
     } else if (this.battleState === 'ko') {
       const dist = Math.sqrt(dx * dx + dz * dz)
-      this.camera.radius = Math.max(4.0, Math.min(dist * 0.9, 10))
+      targetRadius = Math.max(4.0, Math.min(dist * 0.9, 10))
     } else {
       const dist = Math.sqrt(dx * dx + dz * dz)
-      this.camera.radius = Math.max(8, Math.min(dist * 1.5, 18))
+      targetRadius = Math.max(7.5, Math.min(dist * 1.4, 18.0))
+      
+      // Dynamic hitstop camera zoom (Street Fighter style action framing)
+      const p1Hs = this.player1.hitstopTimer
+      const p2Hs = this.player2.hitstopTimer
+      const maxHitstop = Math.max(p1Hs, p2Hs)
+      if (maxHitstop > 0) {
+        if (maxHitstop >= 8) {
+          // Intense action zoom on heavy/super impacts
+          const zoomRatio = Math.min(1.0, maxHitstop / 18.0)
+          targetRadius = targetRadius * (1.0 - zoomRatio * 0.42) + 4.5 * (zoomRatio * 0.42)
+          targetPos.y += 0.25 // Shift target slightly up for visual weight
+        } else {
+          // Subtle zoom on light/medium hits
+          const zoomRatio = maxHitstop / 8.0
+          targetRadius = targetRadius * (1.0 - zoomRatio * 0.15) + 6.2 * (zoomRatio * 0.15)
+        }
+      }
     }
 
-    this.camera.setTarget(targetPos)
+    // Smoothly interpolate camera position and zoom radius
+    this.camera.radius = this.camera.radius * 0.85 + targetRadius * 0.15
+    const lerpedTarget = Vector3.Lerp(this.camera.target, targetPos, 0.18)
+    this.camera.setTarget(lerpedTarget)
   }
 
   private render(_interpolation: number): void { }
